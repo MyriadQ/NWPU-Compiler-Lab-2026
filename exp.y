@@ -55,7 +55,7 @@ char* get_var_alloca(const char *name) {
         if (strcmp(e->name, name) == 0)
             return e->alloca_reg;
     }
-    char *reg = malloc(16);
+    char *reg = malloc(strlen(name) + 8);
     sprintf(reg, "%%var_%s", name);
     fprintf(ir_file, "  %s = alloca i32, align 4\n", reg);
     var_entry *new_entry = malloc(sizeof(var_entry));
