@@ -32,6 +32,17 @@ void gen_print_int(const char *value_reg) {
     fprintf(ir_file, "  call i32 (i8*, ...) @printf(i8* getelementptr ([4 x i8], [4 x i8]* @.str, i32 0, i32 0), i32 %s)\n", value_reg);
 }
 
+void dump_buffer(FILE *src){
+    fflush(src);
+    rewind(src);
+    char chunk[4096];
+    size_t n;
+    while((n = fread(chunk, 1, sizeof(chunk), src)) > 0){
+        fwrite(chunk, 1, n, ir_file);
+    }
+    fclose(src);
+}
+
 typedef struct var_entry {
     char *name;
     char *alloca_reg;
@@ -64,6 +75,9 @@ char* get_var_alloca(const char *name) {
       char *l_true;
       char *l_false;
       char *l_end;
+      char *cond; //i1 register from condition
+      FILE *saved_file;// ir_file to restore
+      FILE *true_body; //capture true-block (if-else only)
     } labels;
 }
 
@@ -97,28 +111,26 @@ program:
     ;
 if_cond:
     IF '(' expr ')' {
-        $$.l_true = new_label();
-        $$.l_false = new_label();
-        $$.l_end = new_label();
-
-        // Branch to true or false blocks
-        fprintf(ir_file, "  br i1 %s, label %%%s, label %%%s\n", $3, $$.l_true, $$.l_false);
-
-        // Start the true block so the next 'program' writes here
-        fprintf(ir_file, "%s:\n", $$.l_true);
+        // Defer the br i1 — we don't yet know if ELSE follows.
+        // Remember the condition; capture the true-body into a tmpfile.
+        $$.cond       = $3;
+        $$.l_true     = new_label();
+        $$.l_end      = new_label();
+        $$.l_false    = NULL;        // allocated lazily in if_else_prefix, we don't know wether else exist yet
+        $$.saved_file = ir_file;
+        $$.true_body  = NULL;
+        ir_file = tmpfile();         // body writes here, not into output.ll, store temporary to check for wether else exist 
     }
     ;
 
 if_else_prefix:
     if_cond '{' program '}' ELSE {
-        // Jump to the end label after the true block finishes
-        fprintf(ir_file, "  br label %%%s\n", $1.l_end);
-
-        // Start the false block so the ELSE 'program' writes here
-        fprintf(ir_file, "%s:\n", $1.l_false);
-
-        // Pass the labels up to the final rule
+        // True body has been captured into ir_file (a tmpfile).
+        // Stash it, allocate l_false, and start a fresh tmpfile for the false body.
         $$ = $1;
+        $$.l_false   = new_label();
+        $$.true_body = ir_file;
+        ir_file = tmpfile();
     }
     ;
 
@@ -134,31 +146,48 @@ stmt:
         $$ = $2;
     }
     | if_else_prefix '{' program '}' {
-        // Jump to the end label after the false block finishes
+        // Restore the outer ir_file. The current ir_file holds the false body.
+        FILE *false_body = ir_file;
+        ir_file = $1.saved_file;
+
+        // Now that we know it's an if/else, emit the deferred conditional branch.
+        fprintf(ir_file, "  br i1 %s, label %%%s, label %%%s\n",
+                $1.cond, $1.l_true, $1.l_false);
+
+        // True block: label, replay buffered body, jump to end.
+        fprintf(ir_file, "%s:\n", $1.l_true);
+        dump_buffer($1.true_body);
         fprintf(ir_file, "  br label %%%s\n", $1.l_end);
 
-        // Create the final merge point
+        // False block: label, replay buffered body, jump to end.
+        fprintf(ir_file, "%s:\n", $1.l_false);
+        dump_buffer(false_body);
+        fprintf(ir_file, "  br label %%%s\n", $1.l_end);
+
+        // Merge.
         fprintf(ir_file, "%s:\n", $1.l_end);
 
-        // Free allocated label strings
         free($1.l_true);
         free($1.l_false);
         free($1.l_end);
     }
     | if_cond '{' program '}' {
-        // 1. Close the 'true' block by jumping to the end
+        // if-only: the false target is l_end directly — no dummy block.
+        FILE *body = ir_file;
+        ir_file = $1.saved_file;
+
+        fprintf(ir_file, "  br i1 %s, label %%%s, label %%%s\n",
+                $1.cond, $1.l_true, $1.l_end);
+
+        fprintf(ir_file, "%s:\n", $1.l_true);
+        dump_buffer(body);
         fprintf(ir_file, "  br label %%%s\n", $1.l_end);
 
-        // 2. In an 'if-only', the 'false' branch and the 'end' 
-        
-        fprintf(ir_file, "%s:\n", $1.l_false);
-        fprintf(ir_file, "  br label %%%s\n", $1.l_end);
         fprintf(ir_file, "%s:\n", $1.l_end);
 
-        // 3. Clean up memory
         free($1.l_true);
-        free($1.l_false);
         free($1.l_end);
+        // $1.l_false is NULL in the if-only path — nothing to free.
     }
     ;
 
