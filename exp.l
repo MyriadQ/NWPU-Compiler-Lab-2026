@@ -17,6 +17,9 @@ identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "print"         { return PRINT; }
 "if"            { return IF;  }
 "else"          { return ELSE;}
+"while"         { return WHILE; }
+"do"            { return DO; }
+"for"           { return FOR; }
 {identifier}    { yylval.ident = strdup(yytext); return IDENT; }
 "="             { return '='; }
 ";"             { return ';'; }

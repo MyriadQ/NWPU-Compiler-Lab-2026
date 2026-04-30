@@ -65,6 +65,56 @@ char* get_var_alloca(const char *name) {
     sym_table = new_entry;
     return reg;
 }
+
+#define MAX_NEST 64
+char *stack_cond[MAX_NEST];
+char *stack_body[MAX_NEST];
+char *stack_end[MAX_NEST];
+char *stack_update[MAX_NEST];
+int stack_top = 0;
+
+void push_labels(char *c, char *b, char *e) {
+    stack_cond[stack_top] = c;
+    stack_body[stack_top] = b;
+    stack_end[stack_top]  = e;
+    stack_top++;
+}
+
+void peek_labels(char **c, char **b, char **e) {
+    *c = stack_cond[stack_top - 1];
+    *b = stack_body[stack_top - 1];
+    *e = stack_end[stack_top - 1];
+}
+
+void pop_labels(char **c, char **b, char **e) {
+    stack_top--;
+    *c = stack_cond[stack_top];
+    *b = stack_body[stack_top];
+    *e = stack_end[stack_top];
+}
+
+void push_for_labels(char *c, char *u, char *b, char *e) {
+    stack_cond[stack_top]   = c;
+    stack_update[stack_top] = u;
+    stack_body[stack_top]   = b;
+    stack_end[stack_top]    = e;
+    stack_top++;
+}
+
+void peek_for_labels(char **c, char **u, char **b, char **e) {
+    *c = stack_cond[stack_top - 1];
+    *u = stack_update[stack_top - 1];
+    *b = stack_body[stack_top - 1];
+    *e = stack_end[stack_top - 1];
+}
+
+void pop_for_labels(char **c, char **u, char **b, char **e) {
+    stack_top--;
+    *c = stack_cond[stack_top];
+    *u = stack_update[stack_top];
+    *b = stack_body[stack_top];
+    *e = stack_end[stack_top];
+}
 %}
 
 %union {
@@ -86,6 +136,9 @@ char* get_var_alloca(const char *name) {
 %token IDENT
 %token IF
 %token ELSE
+%token WHILE
+%token DO
+%token FOR
 %token EQ
 %token NE
 %token GE
@@ -97,6 +150,7 @@ char* get_var_alloca(const char *name) {
 
 %type<reg> expr
 %type<reg> stmt
+%type<reg> cond
 %type<num> INTEGER
 %type<ident> IDENT
 
@@ -109,6 +163,12 @@ program:
     program stmt
     | /* empty */
     ;
+
+stmts:
+      stmts stmt
+    | /* empty */
+    ;
+
 if_cond:
     IF '(' expr ')' {
         // Defer the br i1 — we don't yet know if ELSE follows.
@@ -145,6 +205,73 @@ stmt:
         gen_print_int($2);
         $$ = $2;
     }
+    | WHILE
+      '('
+      {
+          char *cond_label = new_label();
+          char *body_label = new_label();
+          char *end_label  = new_label();
+          fprintf(ir_file, "  br label %%%s\n", cond_label);
+          fprintf(ir_file, "%s:\n", cond_label);
+          push_labels(cond_label, body_label, end_label);
+      }
+      cond ')'
+      {
+          char *cond_label, *body_label, *end_label;
+          peek_labels(&cond_label, &body_label, &end_label);
+          fprintf(ir_file, "  br i1 %s, label %%%s, label %%%s\n",
+                  $4, body_label, end_label);
+          fprintf(ir_file, "%s:\n", body_label);
+      }
+      '{' stmts '}'
+      {
+          char *cond_label, *body_label, *end_label;
+          pop_labels(&cond_label, &body_label, &end_label);
+          fprintf(ir_file, "  br label %%%s\n", cond_label);
+          fprintf(ir_file, "%s:\n", end_label);
+          $$ = NULL;
+      }
+    | FOR '(' IDENT '=' expr ';'
+      {
+          char *var_alloca = get_var_alloca($3);
+          fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $5, var_alloca);
+
+          char *cond_label   = new_label();
+          char *update_label = new_label();
+          char *body_label   = new_label();
+          char *end_label    = new_label();
+
+          fprintf(ir_file, "  br label %%%s\n", cond_label);
+          fprintf(ir_file, "%s:\n", cond_label);
+          push_for_labels(cond_label, update_label, body_label, end_label);
+          free($3);
+      }
+      cond ';'
+      {
+          char *cond_label, *update_label, *body_label, *end_label;
+          peek_for_labels(&cond_label, &update_label, &body_label, &end_label);
+          fprintf(ir_file, "  br i1 %s, label %%%s, label %%%s\n",
+                  $8, body_label, end_label);
+          fprintf(ir_file, "%s:\n", update_label);
+      }
+      IDENT '=' expr ')'
+      {
+          char *var_alloca = get_var_alloca($11);
+          fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $13, var_alloca);
+          char *cond_label, *update_label, *body_label, *end_label;
+          peek_for_labels(&cond_label, &update_label, &body_label, &end_label);
+          fprintf(ir_file, "  br label %%%s\n", cond_label);
+          fprintf(ir_file, "%s:\n", body_label);
+          free($11);
+      }
+      '{' stmts '}'
+      {
+          char *cond_label, *update_label, *body_label, *end_label;
+          pop_for_labels(&cond_label, &update_label, &body_label, &end_label);
+          fprintf(ir_file, "  br label %%%s\n", update_label);
+          fprintf(ir_file, "%s:\n", end_label);
+          $$ = NULL;
+      }
     | if_else_prefix '{' program '}' {
         // Restore the outer ir_file. The current ir_file holds the false body.
         FILE *false_body = ir_file;
@@ -188,6 +315,39 @@ stmt:
         free($1.l_true);
         free($1.l_end);
         // $1.l_false is NULL in the if-only path — nothing to free.
+    }
+    ;
+
+cond:
+    expr '<' expr
+    {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = icmp slt i32 %s, %s\n", $$, $1, $3);
+    }
+    | expr '>' expr
+    {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = icmp sgt i32 %s, %s\n", $$, $1, $3);
+    }
+    | expr LE expr
+    {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = icmp sle i32 %s, %s\n", $$, $1, $3);
+    }
+    | expr GE expr
+    {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = icmp sge i32 %s, %s\n", $$, $1, $3);
+    }
+    | expr EQ expr
+    {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = icmp eq i32 %s, %s\n", $$, $1, $3);
+    }
+    | expr NE expr
+    {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = icmp ne i32 %s, %s\n", $$, $1, $3);
     }
     ;
 
@@ -267,6 +427,7 @@ int main(int argc, char **argv) {
     fprintf(ir_file, "target triple = \"x86_64-unknown-linux-gnu\"\n");
     declare_printf();
     fprintf(ir_file, "\ndefine i32 @main() {\n");
+    fprintf(ir_file, "entry:\n");
 
     yyparse();
 
