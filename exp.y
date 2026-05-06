@@ -66,14 +66,21 @@ char* get_var_alloca(const char *name) {
     return reg;
 }
 
-#define MAX_NEST 64
-char *stack_cond[MAX_NEST];
-char *stack_body[MAX_NEST];
-char *stack_end[MAX_NEST];
-char *stack_update[MAX_NEST];
+char **stack_cond   = NULL;
+char **stack_body   = NULL;
+char **stack_end    = NULL;
+char **stack_update = NULL;
 int stack_top = 0;
+int stack_cap = 0;
 
 void push_labels(char *c, char *b, char *e) {
+    if (stack_top >= stack_cap) {
+        stack_cap = stack_cap ? stack_cap * 2 : 8;
+        stack_cond   = realloc(stack_cond,   stack_cap * sizeof(char *));
+        stack_body   = realloc(stack_body,   stack_cap * sizeof(char *));
+        stack_end    = realloc(stack_end,    stack_cap * sizeof(char *));
+        stack_update = realloc(stack_update, stack_cap * sizeof(char *));
+    }
     stack_cond[stack_top] = c;
     stack_body[stack_top] = b;
     stack_end[stack_top]  = e;
@@ -94,6 +101,13 @@ void pop_labels(char **c, char **b, char **e) {
 }
 
 void push_for_labels(char *c, char *u, char *b, char *e) {
+    if (stack_top >= stack_cap) {
+        stack_cap = stack_cap ? stack_cap * 2 : 8;
+        stack_cond   = realloc(stack_cond,   stack_cap * sizeof(char *));
+        stack_body   = realloc(stack_body,   stack_cap * sizeof(char *));
+        stack_end    = realloc(stack_end,    stack_cap * sizeof(char *));
+        stack_update = realloc(stack_update, stack_cap * sizeof(char *));
+    }
     stack_cond[stack_top]   = c;
     stack_update[stack_top] = u;
     stack_body[stack_top]   = b;
@@ -409,30 +423,6 @@ expr:
     }
     | '(' expr ')' {
         $$ = $2;
-    }
-    | expr '>' expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp sgt i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr '<' expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp slt i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr EQ expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp eq i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr NE expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp ne i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr GE expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp sge i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr LE expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp sle i32 %s, %s\n", $$, $1, $3);
     }
     ;
 
