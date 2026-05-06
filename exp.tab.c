@@ -253,8 +253,10 @@ enum yysymbol_kind_t
   YYSYMBOL_36_3 = 36,                      /* $@3  */
   YYSYMBOL_37_4 = 37,                      /* $@4  */
   YYSYMBOL_38_5 = 38,                      /* $@5  */
-  YYSYMBOL_cond = 39,                      /* cond  */
-  YYSYMBOL_expr = 40                       /* expr  */
+  YYSYMBOL_39_6 = 39,                      /* $@6  */
+  YYSYMBOL_40_7 = 40,                      /* $@7  */
+  YYSYMBOL_cond = 41,                      /* cond  */
+  YYSYMBOL_expr = 42                       /* expr  */
 };
 typedef enum yysymbol_kind_t yysymbol_kind_t;
 
@@ -582,16 +584,16 @@ union yyalloc
 /* YYFINAL -- State number of the termination state.  */
 #define YYFINAL  2
 /* YYLAST -- Last index in YYTABLE.  */
-#define YYLAST   211
+#define YYLAST   217
 
 /* YYNTOKENS -- Number of terminals.  */
 #define YYNTOKENS  28
 /* YYNNTS -- Number of nonterminals.  */
-#define YYNNTS  13
+#define YYNNTS  15
 /* YYNRULES -- Number of rules.  */
-#define YYNRULES  38
+#define YYNRULES  41
 /* YYNSTATES -- Number of states.  */
-#define YYNSTATES  92
+#define YYNSTATES  103
 
 /* YYMAXUTOK -- Last valid token kind.  */
 #define YYMAXUTOK   270
@@ -643,9 +645,10 @@ static const yytype_int8 yytranslate[] =
 static const yytype_int16 yyrline[] =
 {
        0,   163,   163,   164,   168,   169,   173,   187,   198,   204,
-     210,   219,   208,   235,   250,   258,   234,   275,   301,   322,
-     327,   332,   337,   342,   347,   355,   359,   365,   369,   373,
-     377,   381,   385,   388,   392,   396,   400,   404,   408
+     210,   219,   208,   235,   250,   258,   234,   276,   285,   275,
+     300,   326,   347,   352,   357,   362,   367,   372,   380,   384,
+     390,   394,   398,   402,   406,   410,   413,   417,   421,   425,
+     429,   433
 };
 #endif
 
@@ -665,8 +668,8 @@ static const char *const yytname[] =
   "IDENT", "IF", "ELSE", "WHILE", "DO", "FOR", "EQ", "NE", "GE", "LE",
   "'>'", "'<'", "'+'", "'-'", "'*'", "'/'", "UMINUS", "'('", "')'", "'{'",
   "'}'", "'='", "';'", "$accept", "program", "stmts", "if_cond",
-  "if_else_prefix", "stmt", "$@1", "$@2", "$@3", "$@4", "$@5", "cond",
-  "expr", YY_NULLPTR
+  "if_else_prefix", "stmt", "$@1", "$@2", "$@3", "$@4", "$@5", "$@6",
+  "$@7", "cond", "expr", YY_NULLPTR
 };
 
 static const char *
@@ -676,7 +679,7 @@ yysymbol_name (yysymbol_kind_t yysymbol)
 }
 #endif
 
-#define YYPACT_NINF (-74)
+#define YYPACT_NINF (-83)
 
 #define yypact_value_is_default(Yyn) \
   ((Yyn) == YYPACT_NINF)
@@ -690,16 +693,17 @@ yysymbol_name (yysymbol_kind_t yysymbol)
    STATE-NUM.  */
 static const yytype_int16 yypact[] =
 {
-     -74,   180,   -74,    -2,   -25,   -18,   -10,    -7,    -6,    -5,
-     -74,   -74,   -74,    -2,    -2,    82,    -2,    -2,   -74,    26,
-     -74,   -74,   -74,   133,    -2,    -2,    -2,    -2,    -2,    -2,
-      -2,    -2,    -2,    -2,   -74,    99,   146,    -2,     7,    29,
-      38,   -74,   181,   181,   181,   181,   181,   181,   -13,   -13,
-     -74,   -74,   -74,   -74,    13,   191,    -2,    31,   -74,   -74,
-      -2,    -2,    -2,    -2,    -2,    -2,   116,   -74,    16,   181,
-     181,   181,   181,   181,   181,   -74,   -74,    -2,    61,    15,
-     -74,   -74,   -74,    40,    21,    -2,   159,   -74,    25,   -74,
-      67,   -74
+     -83,   186,   -83,    -2,   -22,   -12,    -9,   -83,    -5,    11,
+      14,   -83,   -83,   -83,    -2,    -2,    88,    -2,    -2,   -83,
+      18,    38,   -83,   -83,   -83,   139,    -2,    -2,    -2,    -2,
+      -2,    -2,    -2,    -2,    -2,    -2,   -83,   105,   152,    -2,
+     -83,    -7,    31,    44,   -83,   187,   187,   187,   187,   187,
+     187,   -11,   -11,   -83,   -83,   -83,   -83,    21,   197,    65,
+      -2,    39,   -83,   -83,    -2,    -2,    -2,    -2,    -2,    -2,
+     -83,   -83,   122,   -83,    27,   187,   187,   187,   187,   187,
+     187,    37,   -83,   -83,    33,    -2,    73,    -2,    32,   -83,
+      35,   -83,    40,    55,   -83,    46,    -2,   165,   -83,    53,
+     -83,    86,   -83
 };
 
 /* YYDEFACT[STATE-NUM] -- Default reduction number in state STATE-NUM.
@@ -707,30 +711,31 @@ static const yytype_int16 yypact[] =
    means the default is an error.  */
 static const yytype_int8 yydefact[] =
 {
-       3,     0,     1,     0,     0,     0,     0,     0,     0,     0,
-       2,    25,    26,     0,     0,     0,     0,     0,    10,     0,
-       3,     3,    27,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     9,     0,     0,     0,     0,     0,
-       0,    32,    35,    36,    37,    38,    33,    34,    28,    29,
-      30,    31,     8,     6,     0,     0,     0,    18,    17,    11,
-       0,     0,     0,     0,     0,     0,     0,     7,     0,    23,
-      24,    22,    21,    20,    19,    13,     5,     0,     0,     0,
-      12,     4,    14,     0,     0,     0,     0,    15,     0,     5,
-       0,    16
+       3,     0,     1,     0,     0,     0,     0,    17,     0,     0,
+       0,     2,    28,    29,     0,     0,     0,     0,     0,    10,
+       0,     0,     3,     3,    30,     0,     0,     0,     0,     0,
+       0,     0,     0,     0,     0,     0,     9,     0,     0,     0,
+       5,     0,     0,     0,    35,    38,    39,    40,    41,    36,
+      37,    31,    32,    33,    34,     8,     6,     0,     0,     0,
+       0,    21,    20,    11,     0,     0,     0,     0,     0,     0,
+      18,     4,     0,     7,     0,    26,    27,    25,    24,    23,
+      22,     0,    13,     5,     0,     0,     0,     0,     0,    12,
+       0,    14,     0,     0,    19,     0,     0,     0,    15,     0,
+       5,     0,    16
 };
 
 /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-     -74,   -12,   -39,   -74,   -74,   -73,   -74,   -74,   -74,   -74,
-     -74,   -26,    -3
+     -83,    -1,   -82,   -83,   -83,   -53,   -83,   -83,   -83,   -83,
+     -83,   -83,   -83,   -80,    -3
 };
 
 /* YYDEFGOTO[NTERM-NUM].  */
 static const yytype_int8 yydefgoto[] =
 {
-       0,     1,    78,     8,     9,    10,    37,    68,    77,    83,
-      88,    54,    55
+       0,     1,    59,     9,    10,    11,    39,    74,    85,    93,
+      99,    20,    81,    57,    58
 };
 
 /* YYTABLE[YYPACT[STATE-NUM]] -- What to do in state STATE-NUM.  If
@@ -738,88 +743,91 @@ static const yytype_int8 yydefgoto[] =
    number is the opposite.  If YYTABLE_NINF, syntax error.  */
 static const yytype_int8 yytable[] =
 {
-      15,    16,    11,    12,    17,    81,    32,    33,    39,    40,
-      22,    23,    18,    35,    36,    19,    13,    81,    20,    21,
-      14,    42,    43,    44,    45,    46,    47,    48,    49,    50,
-      51,    38,     3,    56,     4,     5,    59,     6,    67,     7,
-      76,     3,    82,     4,     5,    84,     6,    85,     7,    89,
-      90,    79,     0,    66,    57,     0,     0,    69,    70,    71,
-      72,    73,    74,    58,     3,     0,     4,     5,     0,     6,
-       3,     7,     4,     5,     0,     6,     0,     7,     0,     0,
-       0,     0,    86,     0,     0,     0,    80,     0,     0,     0,
-       0,     0,    91,    24,    25,    26,    27,    28,    29,    30,
-      31,    32,    33,     0,     0,     0,     0,     0,     0,    34,
-      24,    25,    26,    27,    28,    29,    30,    31,    32,    33,
-       0,     0,     0,     0,     0,     0,    52,    24,    25,    26,
-      27,    28,    29,    30,    31,    32,    33,     0,     0,     0,
-       0,     0,     0,    75,    24,    25,    26,    27,    28,    29,
-      30,    31,    32,    33,     0,     0,    41,    24,    25,    26,
-      27,    28,    29,    30,    31,    32,    33,     0,     0,    53,
-      24,    25,    26,    27,    28,    29,    30,    31,    32,    33,
-       2,     0,    87,     3,     0,     4,     5,     0,     6,     0,
-       7,     0,    -1,    -1,    -1,    -1,    -1,    -1,    30,    31,
-      32,    33,    60,    61,    62,    63,    64,    65,    30,    31,
-      32,    33
+      16,    86,    12,    13,    17,    88,    71,    90,    34,    35,
+      18,    24,    25,    19,    37,    38,    14,    21,   101,    60,
+      15,    42,    43,    45,    46,    47,    48,    49,    50,    51,
+      52,    53,    54,    71,     3,    22,     4,     5,    23,     6,
+       7,     8,    40,    41,    63,    84,    73,     3,    71,     4,
+       5,    83,     6,     7,     8,    87,    61,    72,    92,    91,
+      95,    75,    76,    77,    78,    79,    80,    94,     3,    62,
+       4,     5,    96,     6,     7,     8,     3,   100,     4,     5,
+       0,     6,     7,     8,     0,     0,     0,     0,     0,     3,
+      70,     4,     5,    97,     6,     7,     8,     0,    89,    26,
+      27,    28,    29,    30,    31,    32,    33,    34,    35,     0,
+       0,   102,     0,     0,     0,    36,    26,    27,    28,    29,
+      30,    31,    32,    33,    34,    35,     0,     0,     0,     0,
+       0,     0,    55,    26,    27,    28,    29,    30,    31,    32,
+      33,    34,    35,     0,     0,     0,     0,     0,     0,    82,
+      26,    27,    28,    29,    30,    31,    32,    33,    34,    35,
+       0,     0,    44,    26,    27,    28,    29,    30,    31,    32,
+      33,    34,    35,     0,     0,    56,    26,    27,    28,    29,
+      30,    31,    32,    33,    34,    35,     2,     0,    98,     3,
+       0,     4,     5,     0,     6,     7,     8,     0,    -1,    -1,
+      -1,    -1,    -1,    -1,    32,    33,    34,    35,    64,    65,
+      66,    67,    68,    69,    32,    33,    34,    35
 };
 
 static const yytype_int8 yycheck[] =
 {
-       3,    26,     4,     5,    22,    78,    19,    20,    20,    21,
-      13,    14,    22,    16,    17,    22,    18,    90,    24,    24,
-      22,    24,    25,    26,    27,    28,    29,    30,    31,    32,
-      33,     5,     3,    26,     5,     6,    23,     8,     7,    10,
-      24,     3,    27,     5,     6,     5,     8,    26,    10,    24,
-      89,    77,    -1,    56,    25,    -1,    -1,    60,    61,    62,
-      63,    64,    65,    25,     3,    -1,     5,     6,    -1,     8,
-       3,    10,     5,     6,    -1,     8,    -1,    10,    -1,    -1,
-      -1,    -1,    85,    -1,    -1,    -1,    25,    -1,    -1,    -1,
-      -1,    -1,    25,    11,    12,    13,    14,    15,    16,    17,
+       3,    83,     4,     5,    26,    85,    59,    87,    19,    20,
+      22,    14,    15,    22,    17,    18,    18,    22,   100,    26,
+      22,    22,    23,    26,    27,    28,    29,    30,    31,    32,
+      33,    34,    35,    86,     3,    24,     5,     6,    24,     8,
+       9,    10,    24,     5,    23,     8,     7,     3,   101,     5,
+       6,    24,     8,     9,    10,    22,    25,    60,    23,    27,
+       5,    64,    65,    66,    67,    68,    69,    27,     3,    25,
+       5,     6,    26,     8,     9,    10,     3,    24,     5,     6,
+      -1,     8,     9,    10,    -1,    -1,    -1,    -1,    -1,     3,
+      25,     5,     6,    96,     8,     9,    10,    -1,    25,    11,
+      12,    13,    14,    15,    16,    17,    18,    19,    20,    -1,
+      -1,    25,    -1,    -1,    -1,    27,    11,    12,    13,    14,
+      15,    16,    17,    18,    19,    20,    -1,    -1,    -1,    -1,
+      -1,    -1,    27,    11,    12,    13,    14,    15,    16,    17,
       18,    19,    20,    -1,    -1,    -1,    -1,    -1,    -1,    27,
       11,    12,    13,    14,    15,    16,    17,    18,    19,    20,
-      -1,    -1,    -1,    -1,    -1,    -1,    27,    11,    12,    13,
-      14,    15,    16,    17,    18,    19,    20,    -1,    -1,    -1,
-      -1,    -1,    -1,    27,    11,    12,    13,    14,    15,    16,
-      17,    18,    19,    20,    -1,    -1,    23,    11,    12,    13,
-      14,    15,    16,    17,    18,    19,    20,    -1,    -1,    23,
-      11,    12,    13,    14,    15,    16,    17,    18,    19,    20,
-       0,    -1,    23,     3,    -1,     5,     6,    -1,     8,    -1,
-      10,    -1,    11,    12,    13,    14,    15,    16,    17,    18,
-      19,    20,    11,    12,    13,    14,    15,    16,    17,    18,
-      19,    20
+      -1,    -1,    23,    11,    12,    13,    14,    15,    16,    17,
+      18,    19,    20,    -1,    -1,    23,    11,    12,    13,    14,
+      15,    16,    17,    18,    19,    20,     0,    -1,    23,     3,
+      -1,     5,     6,    -1,     8,     9,    10,    -1,    11,    12,
+      13,    14,    15,    16,    17,    18,    19,    20,    11,    12,
+      13,    14,    15,    16,    17,    18,    19,    20
 };
 
 /* YYSTOS[STATE-NUM] -- The symbol kind of the accessing symbol of
    state STATE-NUM.  */
 static const yytype_int8 yystos[] =
 {
-       0,    29,     0,     3,     5,     6,     8,    10,    31,    32,
-      33,     4,     5,    18,    22,    40,    26,    22,    22,    22,
-      24,    24,    40,    40,    11,    12,    13,    14,    15,    16,
-      17,    18,    19,    20,    27,    40,    40,    34,     5,    29,
-      29,    23,    40,    40,    40,    40,    40,    40,    40,    40,
-      40,    40,    27,    23,    39,    40,    26,    25,    25,    23,
-      11,    12,    13,    14,    15,    16,    40,     7,    35,    40,
-      40,    40,    40,    40,    40,    27,    24,    36,    30,    39,
-      25,    33,    27,    37,     5,    26,    40,    23,    38,    24,
-      30,    25
+       0,    29,     0,     3,     5,     6,     8,     9,    10,    31,
+      32,    33,     4,     5,    18,    22,    42,    26,    22,    22,
+      39,    22,    24,    24,    42,    42,    11,    12,    13,    14,
+      15,    16,    17,    18,    19,    20,    27,    42,    42,    34,
+      24,     5,    29,    29,    23,    42,    42,    42,    42,    42,
+      42,    42,    42,    42,    42,    27,    23,    41,    42,    30,
+      26,    25,    25,    23,    11,    12,    13,    14,    15,    16,
+      25,    33,    42,     7,    35,    42,    42,    42,    42,    42,
+      42,    40,    27,    24,     8,    36,    30,    22,    41,    25,
+      41,    27,    23,    37,    27,     5,    26,    42,    23,    38,
+      24,    30,    25
 };
 
 /* YYR1[RULE-NUM] -- Symbol kind of the left-hand side of rule RULE-NUM.  */
 static const yytype_int8 yyr1[] =
 {
        0,    28,    29,    29,    30,    30,    31,    32,    33,    33,
-      34,    35,    33,    36,    37,    38,    33,    33,    33,    39,
-      39,    39,    39,    39,    39,    40,    40,    40,    40,    40,
-      40,    40,    40,    40,    40,    40,    40,    40,    40
+      34,    35,    33,    36,    37,    38,    33,    39,    40,    33,
+      33,    33,    41,    41,    41,    41,    41,    41,    42,    42,
+      42,    42,    42,    42,    42,    42,    42,    42,    42,    42,
+      42,    42
 };
 
 /* YYR2[RULE-NUM] -- Number of symbols on the right-hand side of rule RULE-NUM.  */
 static const yytype_int8 yyr2[] =
 {
        0,     2,     2,     0,     2,     0,     4,     5,     4,     3,
-       0,     0,     9,     0,     0,     0,    18,     4,     4,     3,
-       3,     3,     3,     3,     3,     1,     1,     2,     3,     3,
-       3,     3,     3,     3,     3,     3,     3,     3,     3
+       0,     0,     9,     0,     0,     0,    18,     0,     0,    11,
+       4,     4,     3,     3,     3,     3,     3,     3,     1,     1,
+       2,     3,     3,     3,     3,     3,     3,     3,     3,     3,
+       3,     3
 };
 
 
@@ -1295,7 +1303,7 @@ yyreduce:
         (yyval.labels).true_body  = NULL;
         ir_file = tmpfile();         // body writes here, not into output.ll, store temporary to check for wether else exist 
     }
-#line 1299 "exp.tab.c"
+#line 1307 "exp.tab.c"
     break;
 
   case 7: /* if_else_prefix: if_cond '{' program '}' ELSE  */
@@ -1308,7 +1316,7 @@ yyreduce:
         (yyval.labels).true_body = ir_file;
         ir_file = tmpfile();
     }
-#line 1312 "exp.tab.c"
+#line 1320 "exp.tab.c"
     break;
 
   case 8: /* stmt: IDENT '=' expr ';'  */
@@ -1319,7 +1327,7 @@ yyreduce:
         (yyval.reg) = (yyvsp[-1].reg);
         free((yyvsp[-3].ident));
     }
-#line 1323 "exp.tab.c"
+#line 1331 "exp.tab.c"
     break;
 
   case 9: /* stmt: PRINT expr ';'  */
@@ -1328,7 +1336,7 @@ yyreduce:
         gen_print_int((yyvsp[-1].reg));
         (yyval.reg) = (yyvsp[-1].reg);
     }
-#line 1332 "exp.tab.c"
+#line 1340 "exp.tab.c"
     break;
 
   case 10: /* $@1: %empty  */
@@ -1341,7 +1349,7 @@ yyreduce:
           fprintf(ir_file, "%s:\n", cond_label);
           push_labels(cond_label, body_label, end_label);
       }
-#line 1345 "exp.tab.c"
+#line 1353 "exp.tab.c"
     break;
 
   case 11: /* $@2: %empty  */
@@ -1353,7 +1361,7 @@ yyreduce:
                   (yyvsp[-1].reg), body_label, end_label);
           fprintf(ir_file, "%s:\n", body_label);
       }
-#line 1357 "exp.tab.c"
+#line 1365 "exp.tab.c"
     break;
 
   case 12: /* stmt: WHILE '(' $@1 cond ')' $@2 '{' stmts '}'  */
@@ -1365,7 +1373,7 @@ yyreduce:
           fprintf(ir_file, "%s:\n", end_label);
           (yyval.reg) = NULL;
       }
-#line 1369 "exp.tab.c"
+#line 1377 "exp.tab.c"
     break;
 
   case 13: /* $@3: %empty  */
@@ -1384,7 +1392,7 @@ yyreduce:
           push_for_labels(cond_label, update_label, body_label, end_label);
           free((yyvsp[-3].ident));
       }
-#line 1388 "exp.tab.c"
+#line 1396 "exp.tab.c"
     break;
 
   case 14: /* $@4: %empty  */
@@ -1396,7 +1404,7 @@ yyreduce:
                   (yyvsp[-1].reg), body_label, end_label);
           fprintf(ir_file, "%s:\n", update_label);
       }
-#line 1400 "exp.tab.c"
+#line 1408 "exp.tab.c"
     break;
 
   case 15: /* $@5: %empty  */
@@ -1410,7 +1418,7 @@ yyreduce:
           fprintf(ir_file, "%s:\n", body_label);
           free((yyvsp[-3].ident));
       }
-#line 1414 "exp.tab.c"
+#line 1422 "exp.tab.c"
     break;
 
   case 16: /* stmt: FOR '(' IDENT '=' expr ';' $@3 cond ';' $@4 IDENT '=' expr ')' $@5 '{' stmts '}'  */
@@ -1422,11 +1430,48 @@ yyreduce:
           fprintf(ir_file, "%s:\n", end_label);
           (yyval.reg) = NULL;
       }
-#line 1426 "exp.tab.c"
+#line 1434 "exp.tab.c"
     break;
 
-  case 17: /* stmt: if_else_prefix '{' program '}'  */
-#line 275 "exp.y"
+  case 17: /* $@6: %empty  */
+#line 276 "exp.y"
+      {
+          char *body_label = new_label();
+          char *cond_label = new_label();
+          char *end_label  = new_label();
+          fprintf(ir_file, "  br label %%%s\n", body_label);
+          fprintf(ir_file, "%s:\n", body_label);
+          push_labels(cond_label, body_label, end_label);
+      }
+#line 1447 "exp.tab.c"
+    break;
+
+  case 18: /* $@7: %empty  */
+#line 285 "exp.y"
+      {
+          char *cond_label, *body_label, *end_label;
+          peek_labels(&cond_label, &body_label, &end_label);
+          fprintf(ir_file, "  br label %%%s\n", cond_label);
+          fprintf(ir_file, "%s:\n", cond_label);
+      }
+#line 1458 "exp.tab.c"
+    break;
+
+  case 19: /* stmt: DO $@6 '{' stmts '}' $@7 WHILE '(' cond ')' ';'  */
+#line 292 "exp.y"
+      {
+          char *cond_label, *body_label, *end_label;
+          pop_labels(&cond_label, &body_label, &end_label);
+          fprintf(ir_file, "  br i1 %s, label %%%s, label %%%s\n",
+                  (yyvsp[-2].reg), body_label, end_label);
+          fprintf(ir_file, "%s:\n", end_label);
+          (yyval.reg) = NULL;
+      }
+#line 1471 "exp.tab.c"
+    break;
+
+  case 20: /* stmt: if_else_prefix '{' program '}'  */
+#line 300 "exp.y"
                                      {
         // Restore the outer ir_file. The current ir_file holds the false body.
         FILE *false_body = ir_file;
@@ -1453,11 +1498,11 @@ yyreduce:
         free((yyvsp[-3].labels).l_false);
         free((yyvsp[-3].labels).l_end);
     }
-#line 1457 "exp.tab.c"
+#line 1502 "exp.tab.c"
     break;
 
-  case 18: /* stmt: if_cond '{' program '}'  */
-#line 301 "exp.y"
+  case 21: /* stmt: if_cond '{' program '}'  */
+#line 326 "exp.y"
                               {
         // if-only: the false target is l_end directly — no dummy block.
         FILE *body = ir_file;
@@ -1476,192 +1521,192 @@ yyreduce:
         free((yyvsp[-3].labels).l_end);
         // $1.l_false is NULL in the if-only path — nothing to free.
     }
-#line 1480 "exp.tab.c"
+#line 1525 "exp.tab.c"
     break;
 
-  case 19: /* cond: expr '<' expr  */
-#line 323 "exp.y"
+  case 22: /* cond: expr '<' expr  */
+#line 348 "exp.y"
     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = icmp slt i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1489 "exp.tab.c"
+#line 1534 "exp.tab.c"
     break;
 
-  case 20: /* cond: expr '>' expr  */
-#line 328 "exp.y"
+  case 23: /* cond: expr '>' expr  */
+#line 353 "exp.y"
     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = icmp sgt i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1498 "exp.tab.c"
+#line 1543 "exp.tab.c"
     break;
 
-  case 21: /* cond: expr LE expr  */
-#line 333 "exp.y"
+  case 24: /* cond: expr LE expr  */
+#line 358 "exp.y"
     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = icmp sle i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1507 "exp.tab.c"
+#line 1552 "exp.tab.c"
     break;
 
-  case 22: /* cond: expr GE expr  */
-#line 338 "exp.y"
+  case 25: /* cond: expr GE expr  */
+#line 363 "exp.y"
     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = icmp sge i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1516 "exp.tab.c"
+#line 1561 "exp.tab.c"
     break;
 
-  case 23: /* cond: expr EQ expr  */
-#line 343 "exp.y"
+  case 26: /* cond: expr EQ expr  */
+#line 368 "exp.y"
     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = icmp eq i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1525 "exp.tab.c"
+#line 1570 "exp.tab.c"
     break;
 
-  case 24: /* cond: expr NE expr  */
-#line 348 "exp.y"
+  case 27: /* cond: expr NE expr  */
+#line 373 "exp.y"
     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = icmp ne i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1534 "exp.tab.c"
+#line 1579 "exp.tab.c"
     break;
 
-  case 25: /* expr: INTEGER  */
-#line 355 "exp.y"
+  case 28: /* expr: INTEGER  */
+#line 380 "exp.y"
             {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = add i32 %d, 0\n", (yyval.reg), (yyvsp[0].num));
     }
-#line 1543 "exp.tab.c"
+#line 1588 "exp.tab.c"
     break;
 
-  case 26: /* expr: IDENT  */
-#line 359 "exp.y"
+  case 29: /* expr: IDENT  */
+#line 384 "exp.y"
             {
         char *var_alloca = get_var_alloca((yyvsp[0].ident));
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = load i32, i32* %s, align 4\n", (yyval.reg), var_alloca);
         free((yyvsp[0].ident));
     }
-#line 1554 "exp.tab.c"
+#line 1599 "exp.tab.c"
     break;
 
-  case 27: /* expr: '-' expr  */
-#line 365 "exp.y"
+  case 30: /* expr: '-' expr  */
+#line 390 "exp.y"
                             {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = sub i32 0, %s\n", (yyval.reg), (yyvsp[0].reg));
     }
-#line 1563 "exp.tab.c"
+#line 1608 "exp.tab.c"
     break;
 
-  case 28: /* expr: expr '+' expr  */
-#line 369 "exp.y"
+  case 31: /* expr: expr '+' expr  */
+#line 394 "exp.y"
                     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = add i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1572 "exp.tab.c"
+#line 1617 "exp.tab.c"
     break;
 
-  case 29: /* expr: expr '-' expr  */
-#line 373 "exp.y"
+  case 32: /* expr: expr '-' expr  */
+#line 398 "exp.y"
                     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = sub i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1581 "exp.tab.c"
+#line 1626 "exp.tab.c"
     break;
 
-  case 30: /* expr: expr '*' expr  */
-#line 377 "exp.y"
+  case 33: /* expr: expr '*' expr  */
+#line 402 "exp.y"
                     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = mul i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1590 "exp.tab.c"
+#line 1635 "exp.tab.c"
     break;
 
-  case 31: /* expr: expr '/' expr  */
-#line 381 "exp.y"
+  case 34: /* expr: expr '/' expr  */
+#line 406 "exp.y"
                     {
         (yyval.reg) = new_tmp();
         fprintf(ir_file, "  %s = sdiv i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
-#line 1599 "exp.tab.c"
+#line 1644 "exp.tab.c"
     break;
 
-  case 32: /* expr: '(' expr ')'  */
-#line 385 "exp.y"
+  case 35: /* expr: '(' expr ')'  */
+#line 410 "exp.y"
                    {
         (yyval.reg) = (yyvsp[-1].reg);
-    }
-#line 1607 "exp.tab.c"
-    break;
-
-  case 33: /* expr: expr '>' expr  */
-#line 388 "exp.y"
-                    {
-        (yyval.reg) = new_tmp();
-        fprintf(ir_file, "  %s = icmp sgt i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
-    }
-#line 1616 "exp.tab.c"
-    break;
-
-  case 34: /* expr: expr '<' expr  */
-#line 392 "exp.y"
-                    {
-        (yyval.reg) = new_tmp();
-        fprintf(ir_file, "  %s = icmp slt i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
-    }
-#line 1625 "exp.tab.c"
-    break;
-
-  case 35: /* expr: expr EQ expr  */
-#line 396 "exp.y"
-                   {
-        (yyval.reg) = new_tmp();
-        fprintf(ir_file, "  %s = icmp eq i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
-    }
-#line 1634 "exp.tab.c"
-    break;
-
-  case 36: /* expr: expr NE expr  */
-#line 400 "exp.y"
-                   {
-        (yyval.reg) = new_tmp();
-        fprintf(ir_file, "  %s = icmp ne i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
-    }
-#line 1643 "exp.tab.c"
-    break;
-
-  case 37: /* expr: expr GE expr  */
-#line 404 "exp.y"
-                   {
-        (yyval.reg) = new_tmp();
-        fprintf(ir_file, "  %s = icmp sge i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
 #line 1652 "exp.tab.c"
     break;
 
-  case 38: /* expr: expr LE expr  */
-#line 408 "exp.y"
-                   {
+  case 36: /* expr: expr '>' expr  */
+#line 413 "exp.y"
+                    {
         (yyval.reg) = new_tmp();
-        fprintf(ir_file, "  %s = icmp sle i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
+        fprintf(ir_file, "  %s = icmp sgt i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
     }
 #line 1661 "exp.tab.c"
     break;
 
+  case 37: /* expr: expr '<' expr  */
+#line 417 "exp.y"
+                    {
+        (yyval.reg) = new_tmp();
+        fprintf(ir_file, "  %s = icmp slt i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
+    }
+#line 1670 "exp.tab.c"
+    break;
 
-#line 1665 "exp.tab.c"
+  case 38: /* expr: expr EQ expr  */
+#line 421 "exp.y"
+                   {
+        (yyval.reg) = new_tmp();
+        fprintf(ir_file, "  %s = icmp eq i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
+    }
+#line 1679 "exp.tab.c"
+    break;
+
+  case 39: /* expr: expr NE expr  */
+#line 425 "exp.y"
+                   {
+        (yyval.reg) = new_tmp();
+        fprintf(ir_file, "  %s = icmp ne i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
+    }
+#line 1688 "exp.tab.c"
+    break;
+
+  case 40: /* expr: expr GE expr  */
+#line 429 "exp.y"
+                   {
+        (yyval.reg) = new_tmp();
+        fprintf(ir_file, "  %s = icmp sge i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
+    }
+#line 1697 "exp.tab.c"
+    break;
+
+  case 41: /* expr: expr LE expr  */
+#line 433 "exp.y"
+                   {
+        (yyval.reg) = new_tmp();
+        fprintf(ir_file, "  %s = icmp sle i32 %s, %s\n", (yyval.reg), (yyvsp[-2].reg), (yyvsp[0].reg));
+    }
+#line 1706 "exp.tab.c"
+    break;
+
+
+#line 1710 "exp.tab.c"
 
       default: break;
     }
@@ -1854,7 +1899,7 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 414 "exp.y"
+#line 439 "exp.y"
 
 
 void yyerror(const char *s) {

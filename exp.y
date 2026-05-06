@@ -272,6 +272,31 @@ stmt:
           fprintf(ir_file, "%s:\n", end_label);
           $$ = NULL;
       }
+    | DO
+      {
+          char *body_label = new_label();
+          char *cond_label = new_label();
+          char *end_label  = new_label();
+          fprintf(ir_file, "  br label %%%s\n", body_label);
+          fprintf(ir_file, "%s:\n", body_label);
+          push_labels(cond_label, body_label, end_label);
+      }
+      '{' stmts '}'
+      {
+          char *cond_label, *body_label, *end_label;
+          peek_labels(&cond_label, &body_label, &end_label);
+          fprintf(ir_file, "  br label %%%s\n", cond_label);
+          fprintf(ir_file, "%s:\n", cond_label);
+      }
+      WHILE '(' cond ')' ';'
+      {
+          char *cond_label, *body_label, *end_label;
+          pop_labels(&cond_label, &body_label, &end_label);
+          fprintf(ir_file, "  br i1 %s, label %%%s, label %%%s\n",
+                  $9, body_label, end_label);
+          fprintf(ir_file, "%s:\n", end_label);
+          $$ = NULL;
+      }
     | if_else_prefix '{' program '}' {
         // Restore the outer ir_file. The current ir_file holds the false body.
         FILE *false_body = ir_file;
