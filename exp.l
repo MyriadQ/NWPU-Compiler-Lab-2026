@@ -35,6 +35,9 @@ identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "!="            { return NE;  }
 ">="            { return GE;  }
 "<="            { return LE;  }
+"&&"            { return AND; }
+"||"            { return OR;  }
+"!"             { return NOT; }
 "{"             { return '{'; }
 "}"             { return '}'; }
 [ \t]           {             }

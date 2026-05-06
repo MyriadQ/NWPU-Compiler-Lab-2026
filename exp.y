@@ -143,6 +143,12 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %token NE
 %token GE
 %token LE
+%token AND
+%token OR
+%token NOT
+%left OR
+%left AND
+%right NOT
 %nonassoc '>' '<' EQ NE GE LE
 %left '+' '-'
 %left '*' '/'
@@ -373,6 +379,25 @@ cond:
     {
         $$ = new_tmp();
         fprintf(ir_file, "  %s = icmp ne i32 %s, %s\n", $$, $1, $3);
+    }
+    | cond AND cond
+    {
+        $$ = new_temp();
+        fprintf(ir_file, " %s = and i1 %s, %s\n", $$, $1, $3);
+    }
+    | cond OR cond
+    {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = or i1 %s, %s\n", $$, $1, $3);
+    }
+    | NOT cond
+    {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = xor i1 %s, true\n", $$, $2);
+    }
+    | '(' cond ')'
+    {
+        $$ = $2;
     }
     ;
 
