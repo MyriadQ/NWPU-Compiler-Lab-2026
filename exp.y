@@ -176,7 +176,7 @@ stmts:
     ;
 
 if_cond:
-    IF '(' expr ')' {
+    IF '(' cond ')' {
         // Defer the br i1 — we don't yet know if ELSE follows.
         // Remember the condition; capture the true-body into a tmpfile.
         $$.cond       = $3;
@@ -382,7 +382,7 @@ cond:
     }
     | cond AND cond
     {
-        $$ = new_temp();
+        $$ = new_tmp();
         fprintf(ir_file, " %s = and i1 %s, %s\n", $$, $1, $3);
     }
     | cond OR cond
@@ -434,30 +434,6 @@ expr:
     }
     | '(' expr ')' {
         $$ = $2;
-    }
-    | expr '>' expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp sgt i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr '<' expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp slt i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr EQ expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp eq i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr NE expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp ne i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr GE expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp sge i32 %s, %s\n", $$, $1, $3);
-    }
-    | expr LE expr {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = icmp sle i32 %s, %s\n", $$, $1, $3);
     }
     ;
 
