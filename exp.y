@@ -139,6 +139,8 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %token WHILE
 %token DO
 %token FOR
+%token COMMENT
+%token BLOCK_COMMENT
 %token EQ
 %token NE
 %token GE
@@ -206,6 +208,12 @@ stmt:
         fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $3, var_alloca);
         $$ = $3;
         free($1);
+    }
+    | COMMENT {
+        $$ = NULL;
+    }
+    | BLOCK_COMMENT {
+        $$ = NULL;
     }
     | PRINT expr ';' {
         gen_print_int($2);
