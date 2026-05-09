@@ -146,6 +146,7 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %token AND
 %token OR
 %token NOT
+%expect 1 //Only to suppress the warning
 %left OR
 %left AND
 %right NOT
@@ -383,7 +384,7 @@ cond:
     | cond AND cond
     {
         $$ = new_tmp();
-        fprintf(ir_file, " %s = and i1 %s, %s\n", $$, $1, $3);
+        fprintf(ir_file, "  %s = and i1 %s, %s\n", $$, $1, $3);
     }
     | cond OR cond
     {
@@ -398,6 +399,11 @@ cond:
     | '(' cond ')'
     {
         $$ = $2;
+    }
+    | expr
+    {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = icmp ne i32 %s, 0\n", $$, $1);
     }
     ;
 
