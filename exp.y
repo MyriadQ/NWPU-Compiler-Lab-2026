@@ -66,6 +66,51 @@ char* get_var_alloca(const char *name) {
     return reg;
 }
 
+// symbol table for arrays — tracks all declared arrays and their LLVM register info
+typedef struct arr_entry {
+    char *name;          // array name
+    int   size;          // size of array
+    char *alloca_reg;    // memory location (LLVM register for example %arr_arr)
+    struct arr_entry *next;
+} arr_entry;
+arr_entry *arr_table = NULL;
+
+// declaration of a new array, generation of LLVM memory allocation, saving array information to the symbol table
+void declare_array(const char *name, int size) {
+    // checking whether that same array already exits or not
+    for (arr_entry *e = arr_table; e; e = e->next){
+        if (strcmp(e->name, name) == 0){
+            return;
+        }
+    }
+    // if does not exist then declare a new array......
+    char *reg = malloc(strlen(name) + 8);
+    sprintf(reg, "%%arr_%s", name);
+    fprintf(ir_file, "  %s = alloca [%d x i32], align 4\n", reg, size);  // (memory allocation) alloca [N x i32] — reserves N consecutive i32 slots
+    arr_entry *e = malloc(sizeof(arr_entry));
+    e->name       = strdup(name);
+    e->size       = size;
+    e->alloca_reg = reg;
+    e->next       = arr_table;
+    arr_table     = e;
+}
+
+// searching the array symbol table by array name to retrieve the array’s LLVM alloca register for generating array access IR code (so that we can manipulate the array later), while also checking for and reporting undeclared array errors.
+char* get_arr_alloca(const char *name) {
+    for (arr_entry *e = arr_table; e; e = e->next)
+        if (strcmp(e->name, name) == 0)
+            return e->alloca_reg;
+    fprintf(stderr, "Undeclared array: %s\n", name);
+    return NULL;
+}
+
+int get_arr_size(const char *name) {
+    for (arr_entry *e = arr_table; e; e = e->next)
+        if (strcmp(e->name, name) == 0)
+            return e->size;
+    return 0;
+}
+
 #define MAX_NEST 64
 char *stack_cond[MAX_NEST];
 char *stack_body[MAX_NEST];
@@ -146,6 +191,7 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %token AND
 %token OR
 %token NOT
+%token INT_TYPE
 %expect 1 //Only to suppress the warning
 %left OR
 %left AND
@@ -160,7 +206,6 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %type<reg> cond
 %type<num> INTEGER
 %type<ident> IDENT
-
 %type<labels> if_cond
 %type<labels> if_else_prefix
 
@@ -211,6 +256,25 @@ stmt:
     | PRINT expr ';' {
         gen_print_int($2);
         $$ = $2;
+    }
+    | INT_TYPE IDENT '[' INTEGER ']' ';' {
+    declare_array($2, $4);
+    free($2);
+    $$ = NULL;
+    }
+    | IDENT '[' expr ']' '=' expr ';' {
+    char *base = get_arr_alloca($1);
+    char *ptr  = new_tmp();
+
+    fprintf(ir_file,
+        "  %s = getelementptr [%d x i32], [%d x i32]* %s, i32 0, i32 %s\n",
+        ptr,
+        get_arr_size($1), get_arr_size($1),
+        base, $3);
+
+    fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $6, ptr);
+    free($1);
+    $$ = ptr;
     }
     | WHILE
       '('
@@ -440,6 +504,22 @@ expr:
     }
     | '(' expr ')' {
         $$ = $2;
+    }
+    | IDENT '[' expr ']' {
+    char *base = get_arr_alloca($1);
+    char *ptr  = new_tmp();
+    char *val  = new_tmp();
+
+    fprintf(ir_file,
+        "  %s = getelementptr [%d x i32], [%d x i32]* %s, i32 0, i32 %s\n",
+        ptr,
+        get_arr_size($1), get_arr_size($1),
+        base, $3);
+
+    fprintf(ir_file, "  %s = load i32, i32* %s, align 4\n", val, ptr);
+
+    free($1);
+    $$ = val;
     }
     ;
 
