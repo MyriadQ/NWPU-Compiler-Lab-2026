@@ -69,7 +69,8 @@ char* get_var_alloca(const char *name) {
 // symbol table for arrays — tracks all declared arrays and their LLVM register info
 typedef struct arr_entry {
     char *name;          // array name
-    int   size;          // size of array
+    int   rows;          // only 1D array size
+    int   cols;          // include for 2D array
     char *alloca_reg;    // memory location (LLVM register for example %arr_arr)
     struct arr_entry *next;
 } arr_entry;
@@ -86,10 +87,33 @@ void declare_array(const char *name, int size) {
     // if does not exist then declare a new array......
     char *reg = malloc(strlen(name) + 8);
     sprintf(reg, "%%arr_%s", name);
+
     fprintf(ir_file, "  %s = alloca [%d x i32], align 4\n", reg, size);  // (memory allocation) alloca [N x i32] — reserves N consecutive i32 slots
+    
     arr_entry *e = malloc(sizeof(arr_entry));
     e->name       = strdup(name);
-    e->size       = size;
+    e->rows       = size;
+    e->cols       = 0;
+    e->alloca_reg = reg;
+    e->next       = arr_table;
+    arr_table     = e;
+}
+
+// to declare a 2D array — emits alloca [rows x [cols x i32]]
+void declare_array_2d(const char *name, int rows, int cols) {
+    for (arr_entry *e = arr_table; e; e = e->next)
+        if (strcmp(e->name, name) == 0) return;
+
+    char *reg = malloc(strlen(name) + 8);
+    sprintf(reg, "%%arr_%s", name);
+
+    fprintf(ir_file, "  %s = alloca [%d x [%d x i32]], align 4\n",
+            reg, rows, cols);
+
+    arr_entry *e = malloc(sizeof(arr_entry));
+    e->name       = strdup(name);
+    e->rows       = rows;
+    e->cols       = cols;   // column non-zero means it is a 2D
     e->alloca_reg = reg;
     e->next       = arr_table;
     arr_table     = e;
@@ -104,10 +128,17 @@ char* get_arr_alloca(const char *name) {
     return NULL;
 }
 
-int get_arr_size(const char *name) {
+int get_arr_rows(const char *name) {
     for (arr_entry *e = arr_table; e; e = e->next)
         if (strcmp(e->name, name) == 0)
-            return e->size;
+            return e->rows;
+    return 0;
+}
+
+int get_arr_cols(const char *name) {
+    for (arr_entry *e = arr_table; e; e = e->next)
+        if (strcmp(e->name, name) == 0)
+            return e->cols;
     return 0;
 }
 
@@ -262,6 +293,11 @@ stmt:
     free($2);
     $$ = NULL;
     }
+    | INT_TYPE IDENT '[' INTEGER ']' '[' INTEGER ']' ';' {
+    declare_array_2d($2, $4, $7);
+    free($2);
+    $$ = NULL;
+    }
     | IDENT '[' expr ']' '=' expr ';' {
     char *base = get_arr_alloca($1);
     char *ptr  = new_tmp();
@@ -269,10 +305,25 @@ stmt:
     fprintf(ir_file,
         "  %s = getelementptr [%d x i32], [%d x i32]* %s, i32 0, i32 %s\n",
         ptr,
-        get_arr_size($1), get_arr_size($1),
+        get_arr_rows($1), get_arr_rows($1),
         base, $3);
 
     fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $6, ptr);
+    free($1);
+    $$ = ptr;
+    }
+    | IDENT '[' expr ']' '[' expr ']' '=' expr ';' {
+    char *base = get_arr_alloca($1);
+    int   rows = get_arr_rows($1);
+    int   cols = get_arr_cols($1);
+    char *ptr  = new_tmp();
+
+    fprintf(ir_file,
+        "  %s = getelementptr [%d x [%d x i32]], [%d x [%d x i32]]* %s, i32 0, i32 %s, i32 %s\n",
+        ptr, rows, cols, rows, cols, base, $3, $6);
+
+    fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $9, ptr);
+
     free($1);
     $$ = ptr;
     }
@@ -513,8 +564,24 @@ expr:
     fprintf(ir_file,
         "  %s = getelementptr [%d x i32], [%d x i32]* %s, i32 0, i32 %s\n",
         ptr,
-        get_arr_size($1), get_arr_size($1),
+        get_arr_rows($1), get_arr_rows($1),
         base, $3);
+
+    fprintf(ir_file, "  %s = load i32, i32* %s, align 4\n", val, ptr);
+
+    free($1);
+    $$ = val;
+    }
+    | IDENT '[' expr ']' '[' expr ']' {
+    char *base = get_arr_alloca($1);
+    int   rows = get_arr_rows($1);
+    int   cols = get_arr_cols($1);
+    char *ptr  = new_tmp();
+    char *val  = new_tmp();
+
+    fprintf(ir_file,
+        "  %s = getelementptr [%d x [%d x i32]], [%d x [%d x i32]]* %s, i32 0, i32 %s, i32 %s\n",
+        ptr, rows, cols, rows, cols, base, $3, $6);
 
     fprintf(ir_file, "  %s = load i32, i32* %s, align 4\n", val, ptr);
 
