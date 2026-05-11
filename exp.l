@@ -43,6 +43,8 @@ identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "}"             { return '}'; }
 "["             { return '['; }
 "]"             { return ']'; }
+"//".*          {              }
+"/*"([^*]|\*+[^*/])*\*+"/"  {   }
 [ \t]           {             }
 "\n"            { line_no++;  }
 .               { fprintf(stderr, "Unrecognized character '%c' at line %d\n", yytext[0], line_no); }
