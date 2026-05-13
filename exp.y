@@ -10,6 +10,10 @@ void yyerror(const char *s);
 int tmp_counter = 0;
 int label_counter = 0;
 FILE *ir_file;
+// function must be top level, outside of main()
+FILE *fn_file = NULL; //capture user function definition
+FILE *main_buf = NULL; //capture main body code
+FILE *actual_output = NULL;  //the actual output.ll written at very end
 
 char* new_tmp() {
     char *name = malloc(16);
@@ -31,16 +35,20 @@ void declare_printf() {
 void gen_print_int(const char *value_reg) {
     fprintf(ir_file, "  call i32 (i8*, ...) @printf(i8* getelementptr ([4 x i8], [4 x i8]* @.str, i32 0, i32 0), i32 %s)\n", value_reg);
 }
-
-void dump_buffer(FILE *src){
+// only used in main
+void dump_buffer_to(FILE *src, FILE *dst){
     fflush(src);
     rewind(src);
     char chunk[4096];
     size_t n;
     while((n = fread(chunk, 1, sizeof(chunk), src)) > 0){
-        fwrite(chunk, 1, n, ir_file);
+        fwrite(chunk, 1, n, dst);
     }
     fclose(src);
+}
+// if else logic did not change and still use it
+void dump_buffer(FILE *src){
+    dump_buffer_to(src, ir_file);
 }
 
 typedef struct var_entry {
@@ -75,6 +83,10 @@ typedef struct arr_entry {
     struct arr_entry *next;
 } arr_entry;
 arr_entry *arr_table = NULL;
+
+// saved when entering a function definition, restored on exit to prevent scope bleed
+var_entry *saved_sym_table = NULL;
+arr_entry *saved_arr_table = NULL;
 
 // declaration of a new array, generation of LLVM memory allocation, saving array information to the symbol table
 void declare_array(const char *name, int size) {
@@ -140,6 +152,23 @@ int get_arr_cols(const char *name) {
         if (strcmp(e->name, name) == 0)
             return e->cols;
     return 0;
+}
+// symbol table for functions — tracks declared function names and their parameter counts
+// so that call sites can be validated and the correct LLVM call IR can be emitted
+typedef struct func_entry {
+    char *name;      // function name
+    int   n_params;  // number of parameters (always 0 with no argument)
+    struct func_entry *next;
+} func_entry;
+func_entry *func_table = NULL;
+
+// prepend a new function entry to func_table; called once per function definition
+void register_function(const char *name, int n_params) {
+    func_entry *e = malloc(sizeof(func_entry));
+    e->name     = strdup(name);
+    e->n_params = n_params;
+    e->next     = func_table;
+    func_table  = e;
 }
 
 #define MAX_NEST 64
@@ -223,7 +252,8 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %token OR
 %token NOT
 %token INT_TYPE
-%expect 1 //Only to suppress the warning
+%token RETURN
+%expect 1 // 1 from if/else dangling-else ambiguity
 %left OR
 %left AND
 %right NOT
@@ -244,12 +274,33 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 
 program:
     program stmt
+    | program func_def
     | /* empty */
     ;
 
 stmts:
       stmts stmt
     | /* empty */
+    ;
+
+func_def:
+    INT_TYPE IDENT '(' ')'
+    {
+        /* mid-rule: emit function header into fn_file and isolate scope */
+        fprintf(fn_file, "\ndefine i32 @%s() {\nentry:\n", $2);
+        saved_sym_table = sym_table;  sym_table = NULL;  // snapshot and clear var table
+        saved_arr_table = arr_table;  arr_table = NULL;  // snapshot and clear arr table
+        ir_file = fn_file;                               // redirect IR into fn_file
+        register_function($2, 0);
+    }
+    '{' stmts '}'
+    {
+        fprintf(ir_file, "  ret i32 0\n}\n");   // fallthrough return
+        ir_file   = main_buf;                   // restore IR to main body buffer
+        sym_table = saved_sym_table;            // restore var scope
+        arr_table = saved_arr_table;            // restore arr scope
+        free($2);
+    }
     ;
 
 if_cond:
@@ -287,6 +338,26 @@ stmt:
     | PRINT expr ';' {
         gen_print_int($2);
         $$ = $2;
+    }
+    | INT_TYPE IDENT '=' expr ';' {
+        // explicit variable declaration with initializer: int a = 5;
+        // get_var_alloca allocates the variable if not yet declared, then store the value
+        char *var_alloca = get_var_alloca($2);
+        fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $4, var_alloca);
+        $$ = $4;
+        free($2);
+    }
+    | RETURN expr ';' {
+        fprintf(ir_file, "  ret i32 %s\n", $2);
+        char *dead = new_label();
+        fprintf(ir_file, "%s:\n", dead);  // dead block keeps IR well-formed after ret
+        $$ = NULL;
+    }
+    | IDENT '(' ')' ';' {
+        // call a function as a statement, discarding return value
+        fprintf(ir_file, "  call void @%s()\n", $1);
+        free($1);
+        $$ = NULL;
     }
     | INT_TYPE IDENT '[' INTEGER ']' ';' {
     declare_array($2, $4);
@@ -588,6 +659,12 @@ expr:
     free($1);
     $$ = val;
     }
+    | IDENT '(' ')' {
+        // call a function and capture its i32 return value as an expression
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = call i32 @%s()\n", $$, $1);
+        free($1);
+    }
     ;
 
 %%
@@ -597,21 +674,31 @@ void yyerror(const char *s) {
 }
 
 int main(int argc, char **argv) {
-    ir_file = fopen("output.ll", "w");
-    if (!ir_file) {
-        perror("Cannot open output.ll");
-        return 1;
-    }
+    // open the real output file — nothing is written here during parsing
+    actual_output = fopen("output.ll", "w");
+    if (!actual_output) { perror("Cannot open output.ll"); return 1; }
+
+    // module-level declarations go directly to output.ll (always first, order is fixed)
+    ir_file = actual_output;
     fprintf(ir_file, "; ModuleID = 'expr_compiler'\n");
     fprintf(ir_file, "target triple = \"x86_64-unknown-linux-gnu\"\n");
     declare_printf();
-    fprintf(ir_file, "\ndefine i32 @main() {\n");
-    fprintf(ir_file, "entry:\n");
 
-    yyparse();
+    // set up separate buffers: fn_file for user functions, main_buf for @main body
+    fn_file  = tmpfile();
+    main_buf = tmpfile();
+    ir_file  = main_buf;  // all main-body IR goes here by default during parsing
 
-    fprintf(ir_file, "  ret i32 0\n");
-    fprintf(ir_file, "}\n");
-    fclose(ir_file);
+    yyparse();  // entire compilation happens here; func_def redirects ir_file to fn_file as needed
+
+    // flush in correct order: user functions must appear before @main in LLVM IR
+    dump_buffer_to(fn_file, actual_output);
+    fprintf(actual_output, "\ndefine i32 @main() {\n");
+    fprintf(actual_output, "entry:\n");
+    dump_buffer_to(main_buf, actual_output);
+    fprintf(actual_output, "  ret i32 0\n");
+    fprintf(actual_output, "}\n");
+
+    fclose(actual_output);
     return 0;
 }
