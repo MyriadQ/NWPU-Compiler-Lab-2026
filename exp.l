@@ -14,14 +14,17 @@ identifier  [a-zA-Z_][a-zA-Z0-9_]*
 %%
 
 {integer}       { yylval.num = atoi(yytext); return INTEGER; }
-"print"         { return PRINT; }
-"if"            { return IF;  }
-"else"          { return ELSE;}
-"while"         { return WHILE; }
-"do"            { return DO; }
-"for"           { return FOR; }
-"break"         { return BREAK; }
+"print"         { return PRINT;    }
+"if"            { return IF;       }
+"else"          { return ELSE;     }
+"while"         { return WHILE;    }
+"do"            { return DO;       }
+"for"           { return FOR;      }
+"break"         { return BREAK;    }
 "continue"      { return CONTINUE; }
+"int"           { return INT_TYPE; }
+"return"        { return RETURN;   }
+","             { return ','; }
 {identifier}    { yylval.ident = strdup(yytext); return IDENT; }
 "="             { return '='; }
 ";"             { return ';'; }"+"             { return '+'; }
@@ -36,8 +39,15 @@ identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "!="            { return NE;  }
 ">="            { return GE;  }
 "<="            { return LE;  }
+"&&"            { return AND; }
+"||"            { return OR;  }
+"!"             { return NOT; }
 "{"             { return '{'; }
 "}"             { return '}'; }
+"["             { return '['; }
+"]"             { return ']'; }
+"//".*          {              }
+"/*"([^*]|\*+[^*/])*\*+"/"  {   }
 [ \t]           {             }
 "\n"            { line_no++;  }
 .               { fprintf(stderr, "Unrecognized character '%c' at line %d\n", yytext[0], line_no); }
