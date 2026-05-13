@@ -81,9 +81,10 @@ void push_labels(char *c, char *b, char *e) {
         stack_end    = realloc(stack_end,    stack_cap * sizeof(char *));
         stack_update = realloc(stack_update, stack_cap * sizeof(char *));
     }
-    stack_cond[stack_top] = c;
-    stack_body[stack_top] = b;
-    stack_end[stack_top]  = e;
+    stack_cond[stack_top]   = c;
+    stack_body[stack_top]   = b;
+    stack_end[stack_top]    = e;
+    stack_update[stack_top] = c; // continue → cond for while/do-while
     stack_top++;
 }
 
@@ -153,6 +154,8 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %token WHILE
 %token DO
 %token FOR
+%token BREAK
+%token CONTINUE
 %token EQ
 %token NE
 %token GE
@@ -311,6 +314,18 @@ stmt:
           fprintf(ir_file, "%s:\n", end_label);
           $$ = NULL;
       }
+    | BREAK ';' {
+        fprintf(ir_file, "  br label %%%s\n", stack_end[stack_top - 1]);
+        char *dead = new_label();
+        fprintf(ir_file, "%s:\n", dead);
+        $$ = NULL;
+    }
+    | CONTINUE ';' {
+        fprintf(ir_file, "  br label %%%s\n", stack_update[stack_top - 1]);
+        char *dead = new_label();
+        fprintf(ir_file, "%s:\n", dead);
+        $$ = NULL;
+    }
     | if_else_prefix '{' program '}' {
         // Restore the outer ir_file. The current ir_file holds the false body.
         FILE *false_body = ir_file;

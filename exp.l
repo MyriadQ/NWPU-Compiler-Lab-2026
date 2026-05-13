@@ -20,10 +20,11 @@ identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "while"         { return WHILE; }
 "do"            { return DO; }
 "for"           { return FOR; }
+"break"         { return BREAK; }
+"continue"      { return CONTINUE; }
 {identifier}    { yylval.ident = strdup(yytext); return IDENT; }
 "="             { return '='; }
-";"             { return ';'; }
-"+"             { return '+'; }
+";"             { return ';'; }"+"             { return '+'; }
 "-"             { return '-'; }
 "*"             { return '*'; }
 "/"             { return '/'; }
