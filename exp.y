@@ -77,8 +77,8 @@ char* get_var_alloca(const char *name) {
 // symbol table for arrays — tracks all declared arrays and their LLVM register info
 typedef struct arr_entry {
     char *name;          // array name
-    int   rows;          // only 1D array size
-    int   cols;          // include for 2D array
+    int  *dims;          // a dynamic array that will hold any dimension size for the desired array e.g. [3,4,5] a 3D array with 5 rows, 4 columns and 3 depths
+    int  ndims;          // number of array dimensions e.g. 3
     char *alloca_reg;    // memory location (LLVM register for example %arr_arr)
     struct arr_entry *next;
 } arr_entry;
@@ -88,50 +88,46 @@ arr_entry *arr_table = NULL;
 var_entry *saved_sym_table = NULL;
 arr_entry *saved_arr_table = NULL;
 
-// declaration of a new array, generation of LLVM memory allocation, saving array information to the symbol table
-void declare_array(const char *name, int size) {
-    // checking whether that same array already exits or not
-    for (arr_entry *e = arr_table; e; e = e->next){
-        if (strcmp(e->name, name) == 0){
-            return;
-        }
+// we are building LLVM type array string recursively for example dims=[2,3,4] -> "[2 x [3 x [4 x i32]]]" 
+void build_type_str(int *dims, int ndims, char *buf) {
+    if (ndims == 1) {
+        sprintf(buf, "[%d x i32]", dims[0]);
     }
-    // if does not exist then declare a new array......
-    char *reg = malloc(strlen(name) + 8);
-    sprintf(reg, "%%arr_%s", name);
-
-    fprintf(ir_file, "  %s = alloca [%d x i32], align 4\n", reg, size);  // (memory allocation) alloca [N x i32] — reserves N consecutive i32 slots
-    
-    arr_entry *e = malloc(sizeof(arr_entry));
-    e->name       = strdup(name);
-    e->rows       = size;
-    e->cols       = 0;
-    e->alloca_reg = reg;
-    e->next       = arr_table;
-    arr_table     = e;
+    else {
+        char inner[512];
+        build_type_str(dims + 1, ndims - 1, inner);  // inner recursion
+        sprintf(buf, "[%d x %s]", dims[0], inner);
+    }
 }
 
-// to declare a 2D array — emits alloca [rows x [cols x i32]]
-void declare_array_2d(const char *name, int rows, int cols) {
+// unified array declaration for any dimensions
+void declare_array_nd(const char *name, int *dims, int ndims) {
+
+    // checks if that array is already decalred so as not to overwrite
     for (arr_entry *e = arr_table; e; e = e->next)
         if (strcmp(e->name, name) == 0) return;
-
+    
+    // if not then go on with declaration
     char *reg = malloc(strlen(name) + 8);
     sprintf(reg, "%%arr_%s", name);
 
-    fprintf(ir_file, "  %s = alloca [%d x [%d x i32]], align 4\n",
-            reg, rows, cols);
+    // calling build_type_str method
+    char type_str[512];
+    build_type_str(dims, ndims, type_str);
+
+    fprintf(ir_file, "  %s = alloca %s, align 4\n", reg, type_str);
 
     arr_entry *e = malloc(sizeof(arr_entry));
-    e->name       = strdup(name);
-    e->rows       = rows;
-    e->cols       = cols;   // column non-zero means it is a 2D
+    e->name      = strdup(name);
+    e->dims      = malloc(sizeof(int) * ndims);
+    memcpy(e->dims, dims, sizeof(int) * ndims);
+    e->ndims     = ndims;
     e->alloca_reg = reg;
-    e->next       = arr_table;
-    arr_table     = e;
+    e->next      = arr_table;
+    arr_table    = e;
 }
 
-// searching the array symbol table by array name to retrieve the array’s LLVM alloca register for generating array access IR code (so that we can manipulate the array later), while also checking for and reporting undeclared array errors.
+// getting array allocated register
 char* get_arr_alloca(const char *name) {
     for (arr_entry *e = arr_table; e; e = e->next)
         if (strcmp(e->name, name) == 0)
@@ -140,19 +136,26 @@ char* get_arr_alloca(const char *name) {
     return NULL;
 }
 
-int get_arr_rows(const char *name) {
+// llvm getelementptr for any dimensions
+void build_gep(char *ptr_reg, const char *arr_name, char **indices) {
+
+    arr_entry *found = NULL;
     for (arr_entry *e = arr_table; e; e = e->next)
-        if (strcmp(e->name, name) == 0)
-            return e->rows;
-    return 0;
+        if (strcmp(e->name, arr_name) == 0) { found = e; break; }
+    if (!found) return;
+
+    char type_str[512];
+    build_type_str(found->dims, found->ndims, type_str);
+
+    fprintf(ir_file, "  %s = getelementptr %s, %s* %s, i32 0",
+            ptr_reg, type_str, type_str, found->alloca_reg);
+
+    for (int i = 0; i < found->ndims; i++)
+        fprintf(ir_file, ", i32 %s", indices[i]);
+
+    fprintf(ir_file, "\n");
 }
 
-int get_arr_cols(const char *name) {
-    for (arr_entry *e = arr_table; e; e = e->next)
-        if (strcmp(e->name, name) == 0)
-            return e->cols;
-    return 0;
-}
 // symbol table for functions — tracks declared function names and their parameter counts
 // so that call sites can be validated and the correct LLVM call IR can be emitted
 typedef struct func_entry {
@@ -230,10 +233,18 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
       char *l_true;
       char *l_false;
       char *l_end;
-      char *cond; //i1 register from condition
+      char *cond;//i1 register from condition
       FILE *saved_file;// ir_file to restore
-      FILE *true_body; //capture true-block (if-else only)
+      FILE *true_body;//capture true-block (if-else only)
     } labels;
+    struct {                 // for dim_list rule
+        int *sizes;          // array of dimension sizes
+        int  count;          // how many dimensions
+    } dimlist;
+    struct {                 // for idx_list rule
+        char **regs;         // array of index registers
+        int    count;        // how many indices
+    } idxlist;
 }
 
 %token PRINT
@@ -269,6 +280,9 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %type<ident> IDENT
 %type<labels> if_cond
 %type<labels> if_else_prefix
+%type<dimlist> dim_list
+%type<idxlist> idx_list
+
 
 %%
 
@@ -327,7 +341,30 @@ if_else_prefix:
         ir_file = tmpfile();
     }
     ;
-
+dim_list:
+    '[' INTEGER ']' {
+        $$.sizes    = malloc(sizeof(int) * 8);
+        $$.sizes[0] = $2;
+        $$.count    = 1;
+    }
+    | dim_list '[' INTEGER ']' {
+        $$ = $1;
+        $$.sizes[$$.count] = $3;
+        $$.count++;
+    }
+    ;
+idx_list:
+    '[' expr ']' {
+        $$.regs    = malloc(sizeof(char*) * 8);
+        $$.regs[0] = $2;
+        $$.count   = 1;
+    }
+    | idx_list '[' expr ']' {
+        $$ = $1;
+        $$.regs[$$.count] = $3;
+        $$.count++;
+    }
+    ;
 stmt:
     IDENT '=' expr ';' {
         char *var_alloca = get_var_alloca($1);
@@ -359,44 +396,19 @@ stmt:
         free($1);
         $$ = NULL;
     }
-    | INT_TYPE IDENT '[' INTEGER ']' ';' {
-    declare_array($2, $4);
-    free($2);
-    $$ = NULL;
+    | INT_TYPE IDENT dim_list ';' {
+        declare_array_nd($2, $3.sizes, $3.count);
+        free($2);
+        free($3.sizes);
+        $$ = NULL;
     }
-    | INT_TYPE IDENT '[' INTEGER ']' '[' INTEGER ']' ';' {
-    declare_array_2d($2, $4, $7);
-    free($2);
-    $$ = NULL;
-    }
-    | IDENT '[' expr ']' '=' expr ';' {
-    char *base = get_arr_alloca($1);
-    char *ptr  = new_tmp();
-
-    fprintf(ir_file,
-        "  %s = getelementptr [%d x i32], [%d x i32]* %s, i32 0, i32 %s\n",
-        ptr,
-        get_arr_rows($1), get_arr_rows($1),
-        base, $3);
-
-    fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $6, ptr);
-    free($1);
-    $$ = ptr;
-    }
-    | IDENT '[' expr ']' '[' expr ']' '=' expr ';' {
-    char *base = get_arr_alloca($1);
-    int   rows = get_arr_rows($1);
-    int   cols = get_arr_cols($1);
-    char *ptr  = new_tmp();
-
-    fprintf(ir_file,
-        "  %s = getelementptr [%d x [%d x i32]], [%d x [%d x i32]]* %s, i32 0, i32 %s, i32 %s\n",
-        ptr, rows, cols, rows, cols, base, $3, $6);
-
-    fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $9, ptr);
-
-    free($1);
-    $$ = ptr;
+    | IDENT idx_list '=' expr ';' {
+        char *ptr = new_tmp();
+        build_gep(ptr, $1, $2.regs);
+        fprintf(ir_file, "  store i32 %s, i32* %s, align 4\n", $4, ptr);
+        free($1);
+        free($2.regs);
+        $$ = ptr;
     }
     | WHILE
       '('
@@ -627,37 +639,14 @@ expr:
     | '(' expr ')' {
         $$ = $2;
     }
-    | IDENT '[' expr ']' {
-    char *base = get_arr_alloca($1);
-    char *ptr  = new_tmp();
-    char *val  = new_tmp();
-
-    fprintf(ir_file,
-        "  %s = getelementptr [%d x i32], [%d x i32]* %s, i32 0, i32 %s\n",
-        ptr,
-        get_arr_rows($1), get_arr_rows($1),
-        base, $3);
-
-    fprintf(ir_file, "  %s = load i32, i32* %s, align 4\n", val, ptr);
-
-    free($1);
-    $$ = val;
-    }
-    | IDENT '[' expr ']' '[' expr ']' {
-    char *base = get_arr_alloca($1);
-    int   rows = get_arr_rows($1);
-    int   cols = get_arr_cols($1);
-    char *ptr  = new_tmp();
-    char *val  = new_tmp();
-
-    fprintf(ir_file,
-        "  %s = getelementptr [%d x [%d x i32]], [%d x [%d x i32]]* %s, i32 0, i32 %s, i32 %s\n",
-        ptr, rows, cols, rows, cols, base, $3, $6);
-
-    fprintf(ir_file, "  %s = load i32, i32* %s, align 4\n", val, ptr);
-
-    free($1);
-    $$ = val;
+    | IDENT idx_list {
+        char *ptr = new_tmp();
+        char *val = new_tmp();
+        build_gep(ptr, $1, $2.regs);
+        fprintf(ir_file, "  %s = load i32, i32* %s, align 4\n", val, ptr);
+        free($1);
+        free($2.regs);
+        $$ = val;
     }
     | IDENT '(' ')' {
         // call a function and capture its i32 return value as an expression

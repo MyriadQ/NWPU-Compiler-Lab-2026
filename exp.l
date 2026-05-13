@@ -15,7 +15,7 @@ identifier  [a-zA-Z_][a-zA-Z0-9_]*
 
 {integer}       { yylval.num = atoi(yytext); return INTEGER; }
 "print"         { return PRINT;    }
-"if"            { return IF;       } 
+"if"            { return IF;       }
 "else"          { return ELSE;     }
 "while"         { return WHILE;    }
 "do"            { return DO;       }
