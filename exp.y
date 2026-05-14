@@ -245,6 +245,10 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
         char **regs;         // array of index registers
         int    count;        // how many indices
     } idxlist;
+    struct {                 // for short-circuit mid-rule
+        char *sc_slot;       // alloca register holding i1 result
+        char *merge_label;   // label to jump to after both sides
+    } scdata;
 }
 
 %token PRINT
@@ -282,6 +286,8 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %type<labels> if_else_prefix
 %type<dimlist> dim_list
 %type<idxlist> idx_list
+%type<scdata> sc_and_mid
+%type<scdata> sc_or_mid
 
 
 %%
@@ -547,7 +553,44 @@ stmt:
         // $1.l_false is NULL in the if-only path — nothing to free.
     }
     ;
+sc_and_mid:
+    cond AND {
+        char *rhs_label   = new_label();
+        char *merge_label = new_label();
+        char *sc_slot     = new_tmp();
 
+        /* alloca an i1 slot — default to false (short-circuit case) */
+        fprintf(ir_file, "  %s = alloca i1\n", sc_slot);
+        fprintf(ir_file, "  store i1 false, i1* %s\n", sc_slot);
+
+        /* if LHS true → go evaluate RHS; if LHS false → skip to merge */
+        fprintf(ir_file, "  br i1 %s, label %%%s, label %%%s\n",
+                $1, rhs_label, merge_label);
+        fprintf(ir_file, "%s:\n", rhs_label);
+
+        $$.sc_slot     = sc_slot;
+        $$.merge_label = merge_label;
+    }
+    ;
+sc_or_mid:
+    cond OR {
+        char *rhs_label   = new_label();
+        char *merge_label = new_label();
+        char *sc_slot     = new_tmp();
+
+        /* alloca an i1 slot — default to true (short-circuit case) */
+        fprintf(ir_file, "  %s = alloca i1\n", sc_slot);
+        fprintf(ir_file, "  store i1 true, i1* %s\n", sc_slot);
+
+        /* if LHS true → skip RHS, go to merge; if LHS false → evaluate RHS */
+        fprintf(ir_file, "  br i1 %s, label %%%s, label %%%s\n",
+                $1, merge_label, rhs_label);
+        fprintf(ir_file, "%s:\n", rhs_label);
+
+        $$.sc_slot     = sc_slot;
+        $$.merge_label = merge_label;
+    }
+    ;
 cond:
     expr '<' expr
     {
@@ -579,15 +622,31 @@ cond:
         $$ = new_tmp();
         fprintf(ir_file, "  %s = icmp ne i32 %s, %s\n", $$, $1, $3);
     }
-    | cond AND cond
+    | sc_and_mid cond %prec AND
     {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = and i1 %s, %s\n", $$, $1, $3);
+    /* $1 = scdata from mid-rule, $2 = RHS i1 result */
+
+    /* store RHS result into the slot */
+    fprintf(ir_file, "  store i1 %s, i1* %s\n", $2, $1.sc_slot);
+    fprintf(ir_file, "  br label %%%s\n", $1.merge_label);
+
+    /* merge block — load the final result */
+    fprintf(ir_file, "%s:\n", $1.merge_label);
+    $$ = new_tmp();
+    fprintf(ir_file, "  %s = load i1, i1* %s\n", $$, $1.sc_slot);
     }
-    | cond OR cond
+    | sc_or_mid cond %prec OR
     {
-        $$ = new_tmp();
-        fprintf(ir_file, "  %s = or i1 %s, %s\n", $$, $1, $3);
+    /* $1 = scdata from mid-rule, $2 = RHS i1 result */
+
+    /* store RHS result into the slot */
+    fprintf(ir_file, "  store i1 %s, i1* %s\n", $2, $1.sc_slot);
+    fprintf(ir_file, "  br label %%%s\n", $1.merge_label);
+
+    /* merge block — load the final result */
+    fprintf(ir_file, "%s:\n", $1.merge_label);
+    $$ = new_tmp();
+    fprintf(ir_file, "  %s = load i1, i1* %s\n", $$, $1.sc_slot);
     }
     | NOT cond
     {
