@@ -88,6 +88,13 @@ arr_entry *arr_table = NULL;
 var_entry *saved_sym_table = NULL;
 arr_entry *saved_arr_table = NULL;
 
+// Phase 2 Step 1 — temporary storage for parameter names collected during param_list parsing.
+// param_list rules push names here; the func_def mid-rule action reads and consumes them.
+// MAX_PARAMS caps how many parameters a single function may declare.
+#define MAX_PARAMS 16
+char *pending_params[MAX_PARAMS];  // strdup'd parameter name strings, e.g. "a", "b"
+int   pending_param_count = 0;     // how many entries are currently in pending_params
+
 // we are building LLVM type array string recursively for example dims=[2,3,4] -> "[2 x [3 x [4 x i32]]]" 
 void build_type_str(int *dims, int ndims, char *buf) {
     if (ndims == 1) {
@@ -288,6 +295,8 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %type<idxlist> idx_list
 %type<scdata> sc_and_mid
 %type<scdata> sc_or_mid
+// arg_list builds a comma-separated LLVM argument string (e.g. "i32 %t0, i32 %t1")
+%type<reg> arg_list
 
 
 %%
@@ -303,19 +312,70 @@ stmts:
     | /* empty */
     ;
 
+// These rules collect the declared parameter names into pending_params[] as the parser
+// reads the function signature, e.g. int add(int a, int b).
+// param_list_opt wraps param_list so that zero-parameter functions still reset the count.
+param_list_opt:
+      /* empty */ { pending_param_count = 0; }  // no params — reset counter for safety
+    | param_list
+    ;
+
+param_list:
+      // first parameter: reset counter and push the name
+      INT_TYPE IDENT {
+          pending_param_count = 0;
+          pending_params[pending_param_count++] = strdup($2);
+          free($2);
+      }
+      // each additional parameter: just push the name (counter is already live)
+    | param_list ',' INT_TYPE IDENT {
+          pending_params[pending_param_count++] = strdup($4);
+          free($4);
+      }
+    ;
+
 func_def:
-    INT_TYPE IDENT '(' ')'
+    // Phase 2 Step 5 — handles both int foo() and int add(int a, int b) { ... }
+    // param_list_opt reduces to empty (zero params) or a full param_list (one or more params)
+    // when empty: sig = "" → define i32 @foo() — identical to the old no-arg alternative
+    INT_TYPE IDENT '(' param_list_opt ')'
     {
-        /* mid-rule: emit function header into fn_file and isolate scope */
-        fprintf(fn_file, "\ndefine i32 @%s() {\nentry:\n", $2);
-        saved_sym_table = sym_table;  sym_table = NULL;  // snapshot and clear var table
-        saved_arr_table = arr_table;  arr_table = NULL;  // snapshot and clear arr table
-        ir_file = fn_file;                               // redirect IR into fn_file
-        register_function($2, 0);
+        // build LLVM parameter signature string: "i32 %param_a, i32 %param_b"
+        char sig[512] = "";
+        for (int i = 0; i < pending_param_count; i++) {
+            if (i > 0) strcat(sig, ", ");
+            char part[64];
+            sprintf(part, "i32 %%param_%s", pending_params[i]);  // %% → literal % in output
+            strcat(sig, part);
+        }
+        fprintf(fn_file, "\ndefine i32 @%s(%s) {\nentry:\n", $2, sig);
+
+        // isolate scope — same as no-arg version
+        saved_sym_table = sym_table;  sym_table = NULL;
+        saved_arr_table = arr_table;  arr_table = NULL;
+        ir_file = fn_file;
+
+        // for each parameter: alloca a stack slot, store the incoming value, register in sym_table
+        // this lets the body treat parameters exactly like local variables (load/store via get_var_alloca)
+        // LLVM parameters like %param_a are SSA values and cannot be reassigned directly
+        for (int i = 0; i < pending_param_count; i++) {
+            char *reg = malloc(strlen(pending_params[i]) + 8);
+            sprintf(reg, "%%var_%s", pending_params[i]);
+            fprintf(ir_file, "  %s = alloca i32, align 4\n", reg);
+            fprintf(ir_file, "  store i32 %%param_%s, i32* %s, align 4\n",
+                    pending_params[i], reg);
+            var_entry *e = malloc(sizeof(var_entry));
+            e->name       = strdup(pending_params[i]);
+            e->alloca_reg = reg;
+            e->next       = sym_table;
+            sym_table     = e;
+            free(pending_params[i]);  // done with this name; it now lives in sym_table
+        }
+        register_function($2, pending_param_count);
     }
     '{' stmts '}'
     {
-        fprintf(ir_file, "  ret i32 0\n}\n");   // fallthrough return
+        fprintf(ir_file, "  ret i32 0\n}\n");   // fallthrough return (dead if explicit return exists)
         ir_file   = main_buf;                   // restore IR to main body buffer
         sym_table = saved_sym_table;            // restore var scope
         arr_table = saved_arr_table;            // restore arr scope
@@ -371,6 +431,24 @@ idx_list:
         $$.count++;
     }
     ;
+
+// Builds up the LLVM call argument string incrementally as each argument expression is reduced.
+// Each expr is already a completed %tN register by this point, so nested calls like f(g(x), y)
+// work naturally — g(x) fully reduces to a register before being appended to f's arg string.
+// Example: add(3, 4) produces the string "i32 %t0, i32 %t1" which is spliced into call i32 @add(...).
+arg_list:
+      // single argument: wrap register in LLVM type annotation
+      expr {
+          $$ = malloc(strlen($1) + 8);
+          sprintf($$, "i32 %s", $1);
+      }
+      // additional argument: append to the existing string and free the old one
+    | arg_list ',' expr {
+          $$ = malloc(strlen($1) + strlen($3) + 16);
+          sprintf($$, "%s, i32 %s", $1, $3);
+          free($1);  // old string is replaced by the new concatenated one
+      }
+    ;
 stmt:
     IDENT '=' expr ';' {
         char *var_alloca = get_var_alloca($1);
@@ -398,8 +476,17 @@ stmt:
     }
     | IDENT '(' ')' ';' {
         // call a function as a statement, discarding return value
-        fprintf(ir_file, "  call void @%s()\n", $1);
+        fprintf(ir_file, "  call i32 @%s()\n", $1);
         free($1);
+        $$ = NULL;
+    }
+    // call with arguments as a statement e.g. printSum(10, 20);
+    // $3 is the assembled arg string from arg_list e.g. "i32 %t0, i32 %t1"
+    // result is discarded so no register is assigned, but call i32 is still correct (not call void)
+    | IDENT '(' arg_list ')' ';' {
+        fprintf(ir_file, "  call i32 @%s(%s)\n", $1, $3);
+        free($1);
+        free($3);
         $$ = NULL;
     }
     | INT_TYPE IDENT dim_list ';' {
@@ -712,6 +799,14 @@ expr:
         $$ = new_tmp();
         fprintf(ir_file, "  %s = call i32 @%s()\n", $$, $1);
         free($1);
+    }
+    // Phase 2 Step 7 — call with arguments as an expression e.g. result = add(3, 4);
+    // $3 is the assembled arg string from arg_list; $$ captures the return value for the parent rule
+    | IDENT '(' arg_list ')' {
+        $$ = new_tmp();
+        fprintf(ir_file, "  %s = call i32 @%s(%s)\n", $$, $1, $3);
+        free($1);
+        free($3);  // arg string no longer needed; $$ carries the result register up the tree
     }
     ;
 
