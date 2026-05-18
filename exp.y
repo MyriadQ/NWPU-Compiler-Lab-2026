@@ -35,16 +35,16 @@ void declare_printf() {
 void gen_print_int(const char *value_reg) {
     fprintf(ir_file, "  call i32 (i8*, ...) @printf(i8* getelementptr ([4 x i8], [4 x i8]* @.str, i32 0, i32 0), i32 %s)\n", value_reg);
 }
-// only used in main
+// only used in main, dump scratch pad files into destination file
 void dump_buffer_to(FILE *src, FILE *dst){
-    fflush(src);
-    rewind(src);
+    fflush(src); //make sure nothing stuck in memory
+    rewind(src); //go back to beginning of scratch pad
     char chunk[4096];
     size_t n;
     while((n = fread(chunk, 1, sizeof(chunk), src)) > 0){
-        fwrite(chunk, 1, n, dst);
+        fwrite(chunk, 1, n, dst); //read a chunk, write it to dst repeat til emmpty
     }
-    fclose(src);
+    fclose(src); //dispose the scratch
 }
 // if else logic did not change and still use it
 void dump_buffer(FILE *src){
@@ -315,8 +315,10 @@ stmts:
 // These rules collect the declared parameter names into pending_params[] as the parser
 // reads the function signature, e.g. int add(int a, int b).
 // param_list_opt wraps param_list so that zero-parameter functions still reset the count.
-param_list_opt:
-      /* empty */ { pending_param_count = 0; }  // no params — reset counter for safety
+param_list_opt: //either list is empty - in this case reset param count, or have a param list
+    // having reset in empty block solve the issue of having 2 function f1(int a) and f2(int b) 
+    // when we reach f2 the count is still 1(from the f1) and it will take param_list without resetting -> this lead to compiler misunderstood it to have 2 param
+      /* empty */ { pending_param_count = 0; }  
     | param_list
     ;
 
@@ -324,8 +326,8 @@ param_list:
       // first parameter: reset counter and push the name
       INT_TYPE IDENT {
           pending_param_count = 0;
-          pending_params[pending_param_count++] = strdup($2);
-          free($2);
+          pending_params[pending_param_count++] = strdup($2);//make a fresh copy of the identifier to store in pending_param[]
+          free($2); //release the original that lexer allocated -> we only use the copy from now
       }
       // each additional parameter: just push the name (counter is already live)
     | param_list ',' INT_TYPE IDENT {
@@ -337,7 +339,7 @@ param_list:
 func_def:
     INT_TYPE IDENT '(' param_list_opt ')'
     {
-        // build LLVM parameter signature string: "i32 %param_a, i32 %param_b"
+        //The goal is to build a string like "i32 %param_a, i32 %param_b" that gets inserted into the LLVM function header.
         char sig[512] = "";
         for (int i = 0; i < pending_param_count; i++) {
             if (i > 0) strcat(sig, ", ");
@@ -345,22 +347,27 @@ func_def:
             sprintf(part, "i32 %%param_%s", pending_params[i]);  // %% → literal % in output
             strcat(sig, part);
         }
+        //This is the header of the function aka int add(int a, int b) but in LLVM language
         fprintf(fn_file, "\ndefine i32 @%s(%s) {\nentry:\n", $2, sig);
 
         // isolate scope — same as no-arg version
-        saved_sym_table = sym_table;  sym_table = NULL;
+        // saving the main symbol table -> then set current sym_table to use with function
+        saved_sym_table = sym_table;  sym_table = NULL; 
         saved_arr_table = arr_table;  arr_table = NULL;
-        ir_file = fn_file;
+        ir_file = fn_file; //redirect the ir_file into function file, which will start writing the body of function in LLVM
 
         // for each parameter: alloca a stack slot, store the incoming value, register in sym_table
         // this lets the body treat parameters exactly like local variables (load/store via get_var_alloca)
-        // LLVM parameters like %param_a are SSA values and cannot be reassigned directly
+        // LLVM parameters like %param_a are SSA values (cannot be reassigned directly) -> solution is to create stack slot for each param
         for (int i = 0; i < pending_param_count; i++) {
+            //create a register name for each stack slot
             char *reg = malloc(strlen(pending_params[i]) + 8);
             sprintf(reg, "%%var_%s", pending_params[i]);
+            // allocate and store the parameter
             fprintf(ir_file, "  %s = alloca i32, align 4\n", reg);
             fprintf(ir_file, "  store i32 %%param_%s, i32* %s, align 4\n",
                     pending_params[i], reg);
+            //This part simply register the name to the sym_table
             var_entry *e = malloc(sizeof(var_entry));
             e->name       = strdup(pending_params[i]);
             e->alloca_reg = reg;
@@ -371,12 +378,17 @@ func_def:
         register_function($2, pending_param_count);
     }
     '{' stmts '}'
+    //The below code open fires after stmts means that the whole function body is done
     {
-        fprintf(ir_file, "  ret i32 0\n}\n");   // fallthrough return (dead if explicit return exists)
-        ir_file   = main_buf;                   // restore IR to main body buffer
-        sym_table = saved_sym_table;            // restore var scope
-        arr_table = saved_arr_table;            // restore arr scope
-        free($2);
+        //if the function does have return -> create a dead block and store the return to satisfy LLVM rule whereas each block must have a terminator
+        fprintf(ir_file, "  ret i32 0\n}\n");   // fallthrough return (dead if explicit return exists) -> line 481
+        //During the entire function body, ir_file was pointing at fn_file. 
+        // This line switches it back to main_buf.
+        ir_file   = main_buf; 
+        //restore the sym_table for main since function is done                 
+        sym_table = saved_sym_table;          
+        arr_table = saved_arr_table;            
+        free($2); //this is the function name string -> free since we finished function
     }
     ;
 
@@ -429,21 +441,29 @@ idx_list:
     }
     ;
 
-// Builds up the LLVM call argument string incrementally as each argument expression is reduced.
-// Each expr is already a completed %tN register by this point, so nested calls like f(g(x), y)
-// work naturally — g(x) fully reduces to a register before being appended to f's arg string.
-// Example: add(3, 4) produces the string "i32 %t0, i32 %t1" which is spliced into call i32 @add(...).
+// arg_list builds the LLVM argument string that gets spliced directly into a call instruction.
+// Goal: turn the arguments of e.g. add(3, 4) into the string "i32 %t0, i32 %t1" so the final
+// emitted IR is:  call i32 @add(i32 %t0, i32 %t1)
+//
+// The rule is left-recursive: the first argument creates the initial string, then each additional
+// comma fires the second alternative which appends to it. The old string is freed each time
+// because $$ is a brand new allocation that replaces it.
+//
+// Nested calls like f(g(x), y) work naturally — g(x) is an expr that fully reduces to a
+// single %tN register BEFORE f's arg_list ever starts building, so there is no ordering issue.
 arg_list:
-      // single argument: wrap register in LLVM type annotation
+      // First (or only) argument: wrap the %tN register in its LLVM type to get e.g. "i32 %t0".
       expr {
           $$ = malloc(strlen($1) + 8);
           sprintf($$, "i32 %s", $1);
       }
-      // additional argument: append to the existing string and free the old one
+      // Each additional argument: concatenate ", i32 %tN" onto the running string.
+      // $1 = the string built so far, $3 = register from the new expr.
+      // free($1) because $$ is a fresh allocation that fully replaces the old string.
     | arg_list ',' expr {
           $$ = malloc(strlen($1) + strlen($3) + 16);
           sprintf($$, "%s, i32 %s", $1, $3);
-          free($1);  // old string is replaced by the new concatenated one
+          free($1);
       }
     ;
 stmt:
@@ -466,24 +486,29 @@ stmt:
         free($2);
     }
     | RETURN expr ';' {
-        fprintf(ir_file, "  ret i32 %s\n", $2);
-        char *dead = new_label();
+        fprintf(ir_file, "  ret i32 %s\n", $2); //ret is LLVM way of ending a function aka terminator
+        char *dead = new_label(); //dead label is used to solve the problem of function return
         fprintf(ir_file, "%s:\n", dead);  // dead block keeps IR well-formed after ret
         $$ = NULL;
     }
+    // Statement call with no arguments e.g. reset();
+    // The return value is intentionally discarded — we call the function for its side effects only.
+    // $$ = NULL because there is no value to pass up the parse tree.
+    // Note: we still emit "call i32", not "call void", because the callee is declared as
+    // "define i32". A type mismatch in the call would make lli reject the IR.
     | IDENT '(' ')' ';' {
-        // call a function as a statement, discarding return value
         fprintf(ir_file, "  call i32 @%s()\n", $1);
         free($1);
         $$ = NULL;
     }
-    // call with arguments as a statement e.g. printSum(10, 20);
-    // $3 is the assembled arg string from arg_list e.g. "i32 %t0, i32 %t1"
-    // result is discarded so no register is assigned, but call i32 is still correct (not call void)
+    // Statement call with arguments e.g. printSum(10, 20);
+    // $3 is the complete LLVM argument string assembled by arg_list e.g. "i32 %t0, i32 %t1".
+    // Again, return value is discarded ($$ = NULL) but "call i32" is still used — not "call void" —
+    // because the return type must match the callee's declaration, regardless of whether we use it.
     | IDENT '(' arg_list ')' ';' {
         fprintf(ir_file, "  call i32 @%s(%s)\n", $1, $3);
         free($1);
-        free($3);
+        free($3);  // arg string has been spliced into the IR; no longer needed
         $$ = NULL;
     }
     | INT_TYPE IDENT dim_list ';' {
@@ -791,19 +816,24 @@ expr:
         free($2.regs);
         $$ = val;
     }
+    // Expression call with no arguments e.g. x = getVal();
+    // Unlike statement calls, the return value is KEPT. new_tmp() allocates a fresh %tN register,
+    // and the call result is assigned to it. $$ is set to that register so the parent rule
+    // (e.g. an assignment like x = getVal()) can read and use the returned value.
     | IDENT '(' ')' {
-        // call a function and capture its i32 return value as an expression
         $$ = new_tmp();
         fprintf(ir_file, "  %s = call i32 @%s()\n", $$, $1);
         free($1);
     }
-    // call with arguments as an expression e.g. result = add(3, 4);
-    // $3 is the assembled arg string from arg_list; $$ captures the return value for the parent rule
+    // Expression call with arguments e.g. x = add(3, 4);
+    // $3 is the complete LLVM argument string from arg_list e.g. "i32 %t0, i32 %t1".
+    // new_tmp() creates a register to hold the return value; $$ carries it up the parse tree
+    // so the parent rule can use it (e.g. store it into a variable, or pass it to another expr).
     | IDENT '(' arg_list ')' {
         $$ = new_tmp();
         fprintf(ir_file, "  %s = call i32 @%s(%s)\n", $$, $1, $3);
         free($1);
-        free($3);  // arg string no longer needed; $$ carries the result register up the tree
+        free($3);  // arg string spliced into IR; $$ carries the result register up instead
     }
     ;
 
@@ -825,17 +855,17 @@ int main(int argc, char **argv) {
     declare_printf();
 
     // set up separate buffers: fn_file for user functions, main_buf for @main body
-    fn_file  = tmpfile();
+    fn_file  = tmpfile(); 
     main_buf = tmpfile();
     ir_file  = main_buf;  // all main-body IR goes here by default during parsing
 
     yyparse();  // entire compilation happens here; func_def redirects ir_file to fn_file as needed
 
     // flush in correct order: user functions must appear before @main in LLVM IR
-    dump_buffer_to(fn_file, actual_output);
+    dump_buffer_to(fn_file, actual_output); // pour functions into output.ll
     fprintf(actual_output, "\ndefine i32 @main() {\n");
     fprintf(actual_output, "entry:\n");
-    dump_buffer_to(main_buf, actual_output);
+    dump_buffer_to(main_buf, actual_output); //pour main content into output.ll
     fprintf(actual_output, "  ret i32 0\n");
     fprintf(actual_output, "}\n");
 
