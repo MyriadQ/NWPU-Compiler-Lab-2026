@@ -88,7 +88,7 @@ arr_entry *arr_table = NULL;
 var_entry *saved_sym_table = NULL;
 arr_entry *saved_arr_table = NULL;
 
-// Phase 2 Step 1 — temporary storage for parameter names collected during param_list parsing.
+// temporary storage for parameter names collected during param_list parsing.
 // param_list rules push names here; the func_def mid-rule action reads and consumes them.
 // MAX_PARAMS caps how many parameters a single function may declare.
 #define MAX_PARAMS 16
@@ -335,9 +335,6 @@ param_list:
     ;
 
 func_def:
-    // Phase 2 Step 5 — handles both int foo() and int add(int a, int b) { ... }
-    // param_list_opt reduces to empty (zero params) or a full param_list (one or more params)
-    // when empty: sig = "" → define i32 @foo() — identical to the old no-arg alternative
     INT_TYPE IDENT '(' param_list_opt ')'
     {
         // build LLVM parameter signature string: "i32 %param_a, i32 %param_b"
@@ -800,7 +797,7 @@ expr:
         fprintf(ir_file, "  %s = call i32 @%s()\n", $$, $1);
         free($1);
     }
-    // Phase 2 Step 7 — call with arguments as an expression e.g. result = add(3, 4);
+    // call with arguments as an expression e.g. result = add(3, 4);
     // $3 is the assembled arg string from arg_list; $$ captures the return value for the parent rule
     | IDENT '(' arg_list ')' {
         $$ = new_tmp();
