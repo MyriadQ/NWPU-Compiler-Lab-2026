@@ -186,12 +186,14 @@ char *stack_cond[MAX_NEST];
 char *stack_body[MAX_NEST];
 char *stack_end[MAX_NEST];
 char *stack_update[MAX_NEST];
+char *stack_continue[MAX_NEST]; // continue target: cond for while/do-while, update for for
 int stack_top = 0;
 
 void push_labels(char *c, char *b, char *e) {
-    stack_cond[stack_top] = c;
-    stack_body[stack_top] = b;
-    stack_end[stack_top]  = e;
+    stack_cond[stack_top]     = c;
+    stack_body[stack_top]     = b;
+    stack_end[stack_top]      = e;
+    stack_continue[stack_top] = c; // continue → re-check condition
     stack_top++;
 }
 
@@ -209,10 +211,11 @@ void pop_labels(char **c, char **b, char **e) {
 }
 
 void push_for_labels(char *c, char *u, char *b, char *e) {
-    stack_cond[stack_top]   = c;
-    stack_update[stack_top] = u;
-    stack_body[stack_top]   = b;
-    stack_end[stack_top]    = e;
+    stack_cond[stack_top]     = c;
+    stack_update[stack_top]   = u;
+    stack_body[stack_top]     = b;
+    stack_end[stack_top]      = e;
+    stack_continue[stack_top] = u; // continue → run update then re-check condition
     stack_top++;
 }
 
@@ -275,6 +278,8 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
 %token NOT
 %token INT_TYPE
 %token RETURN
+%token BREAK
+%token CONTINUE
 %expect 1 // 1 from if/else dangling-else ambiguity
 %left OR
 %left AND
@@ -617,6 +622,18 @@ stmt:
           fprintf(ir_file, "%s:\n", end_label);
           $$ = NULL;
       }
+    | BREAK ';' {
+        fprintf(ir_file, "  br label %%%s\n", stack_end[stack_top - 1]);
+        char *dead = new_label();
+        fprintf(ir_file, "%s:\n", dead);
+        $$ = NULL;
+    }
+    | CONTINUE ';' {
+        fprintf(ir_file, "  br label %%%s\n", stack_continue[stack_top - 1]);
+        char *dead = new_label();
+        fprintf(ir_file, "%s:\n", dead);
+        $$ = NULL;
+    }
     | if_else_prefix '{' program '}' {
         // Restore the outer ir_file. The current ir_file holds the false body.
         FILE *false_body = ir_file;

@@ -21,7 +21,9 @@ identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "do"            { return DO;       }
 "for"           { return FOR;      }
 "int"           { return INT_TYPE; }
-"return"        { return RETURN; }
+"return"        { return RETURN;   }
+"break"         { return BREAK;    }
+"continue"      { return CONTINUE; }
 ","             { return ','; }
 {identifier}    { yylval.ident = strdup(yytext); return IDENT; }
 "="             { return '='; }
