@@ -271,6 +271,15 @@ void pop_for_labels(char **c, char **u, char **b, char **e) {
     int num;
     char *ident;
     char *reg;
+    /* ── [IF-ELSE 1/5] labels struct ─────────────────────────────────────────
+       State bag passed between if_cond → if_else_prefix → stmt final actions.
+       cond:       i1 register from the condition (e.g. %t2)
+       l_true:     label for the true block (allocated in if_cond)
+       l_false:    label for the false block (NULL until ELSE is confirmed)
+       l_end:      merge label after both branches (allocated in if_cond) -> the block that the next instruction lives cuz every br have to jump to a label
+       saved_file: the ir_file active before the if — restored in final action
+       true_body:  tmpfile holding true-body IR (stashed in if_else_prefix only)
+       ────────────────────────────────────────────────────────────────────── */
     struct{
       char *l_true;
       char *l_false;
@@ -448,11 +457,18 @@ func_def:
     }
     ;
 
+/* ── [IF-ELSE 2/5] if_cond rule ─────────────────────────────────────────────
+   Fires as soon as IF '(' cond ')' is reduced — before any body is parsed.
+   Allocates l_true and l_end (needed regardless of ELSE), leaves l_false NULL.
+   Parks the current ir_file into saved_file, then redirects ir_file to a fresh
+   tmpfile so the true body is captured there instead of going to the real output.
+   The deferred br i1 is NOT written yet — we don't know if ELSE follows.
+   ────────────────────────────────────────────────────────────────────────── */
 if_cond:
     IF '(' cond ')' {
         // Defer the br i1 — we don't yet know if ELSE follows.
         // Remember the condition; capture the true-body into a tmpfile.
-        $$.cond       = $3;
+        $$.cond       = $3; //cond
         $$.l_true     = new_label();
         $$.l_end      = new_label();
         $$.l_false    = NULL;        // allocated lazily in if_else_prefix, we don't know wether else exist yet
@@ -462,6 +478,15 @@ if_cond:
     }
     ;
 
+/* ── [IF-ELSE 3/5] if_else_prefix rule ──────────────────────────────────────
+   Fires only when ELSE follows the closing '}' of the true body.
+   Copies all fields from if_cond ($1 → $$), then:
+     - Allocates l_false now that the else branch is confirmed
+     - Stashes the current ir_file (body_tmp1, the true-body scratch pad) into true_body
+     - Opens a second tmpfile for the false body; redirects ir_file to it
+   If no ELSE token appears, Bison takes the if_cond stmt path instead (IF-ELSE 5/5)
+   and this rule never fires.
+   ────────────────────────────────────────────────────────────────────────── */
 if_else_prefix:
     if_cond '{' program '}' ELSE {
         // True body has been captured into ir_file (a tmpfile).
@@ -704,6 +729,15 @@ stmt:
         fprintf(ir_file, "%s:\n", dead);
         $$ = NULL;
     }
+    /* ── [IF-ELSE 4/5] stmt: full if-else final action ──────────────────────
+       Fires after both bodies are fully parsed. Emits everything in the correct
+       LLVM order in a single shot:
+         1. Restore ir_file from saved_file (back to main_buf)
+         2. Emit deferred "br i1 %cond, label %l_true, label %l_false"
+         3. l_true: label + dump true-body (body_tmp1) + "br label %l_end"
+         4. l_false: label + dump false-body (body_tmp2) + "br label %l_end"
+         5. l_end: merge label — execution from both branches converges here
+       ────────────────────────────────────────────────────────────────────── */
     | if_else_prefix '{' program '}' {
         // Restore the outer ir_file. The current ir_file holds the false body.
         FILE *false_body = ir_file;
@@ -730,6 +764,16 @@ stmt:
         free($1.l_false);
         free($1.l_end);
     }
+    /* ── [IF-ELSE 5/5] stmt: if-only final action ───────────────────────────
+       Fires when NO ELSE follows — Bison took this path instead of if_else_prefix.
+       l_false is NULL (never allocated), so the false branch of br jumps directly
+       to l_end, skipping the body entirely:
+         1. Restore ir_file from saved_file
+         2. Emit "br i1 %cond, label %l_true, label %l_end"  (no l_false needed)
+         3. l_true: label + dump body (body_tmp1) + "br label %l_end"
+         4. l_end: merge label
+       Only l_true and l_end are freed — l_false was never created.
+       ────────────────────────────────────────────────────────────────────── */
     | if_cond '{' program '}' {
         // if-only: the false target is l_end directly — no dummy block.
         FILE *body = ir_file;
