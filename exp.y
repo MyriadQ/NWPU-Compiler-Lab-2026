@@ -10,6 +10,12 @@ void yyerror(const char *s);
 int tmp_counter = 0;
 int label_counter = 0;
 FILE *ir_file;
+/* ── [FUNC 1/14] Output buffers ────────────────────────────────────────────
+   fn_file:       accumulates all user-defined function IR during parsing
+   main_buf:      accumulates @main body IR during parsing
+   actual_output: the real output.ll; nothing written here until after yyparse()
+   IR is routed through ir_file which switches between these at runtime.
+   ────────────────────────────────────────────────────────────────────────── */
 // function must be top level, outside of main()
 FILE *fn_file = NULL; //capture user function definition
 FILE *main_buf = NULL; //capture main body code
@@ -35,6 +41,12 @@ void declare_printf() {
 void gen_print_int(const char *value_reg) {
     fprintf(ir_file, "  call i32 (i8*, ...) @printf(i8* getelementptr ([4 x i8], [4 x i8]* @.str, i32 0, i32 0), i32 %s)\n", value_reg);
 }
+/* ── [FUNC 2/14] dump_buffer_to / dump_buffer ──────────────────────────────
+   Pour a scratch-pad tmpfile into a destination file.
+   dump_buffer_to: fflush → rewind → fread/fwrite loop → fclose (used in main)
+   dump_buffer:    thin wrapper that always targets the current ir_file
+   Used by: main() for final assembly, if/else rules for body replay.
+   ────────────────────────────────────────────────────────────────────────── */
 // only used in main, dump scratch pad files into destination file
 void dump_buffer_to(FILE *src, FILE *dst){
     fflush(src); //make sure nothing stuck in memory
@@ -84,10 +96,21 @@ typedef struct arr_entry {
 } arr_entry;
 arr_entry *arr_table = NULL;
 
+/* ── [FUNC 3/14] Scope isolation storage ───────────────────────────────────
+   When func_def mid-rule fires, @main's sym/arr tables are parked here and
+   sym_table / arr_table are cleared to give the function a fresh scope.
+   Restored in the func_def closing action after the body is fully parsed.
+   ────────────────────────────────────────────────────────────────────────── */
 // saved when entering a function definition, restored on exit to prevent scope bleed
 var_entry *saved_sym_table = NULL;
 arr_entry *saved_arr_table = NULL;
 
+/* ── [FUNC 4/14] Parameter staging array ───────────────────────────────────
+   Global notepad filled by param_list as each "int name" token is scanned.
+   func_def mid-rule reads and frees these to build the LLVM signature string
+   and emit alloca+store for each param before the body is parsed.
+   Reset to 0 at the start of every param_list (non-empty) or param_list_opt (empty).
+   ────────────────────────────────────────────────────────────────────────── */
 // temporary storage for parameter names collected during param_list parsing.
 // param_list rules push names here; the func_def mid-rule action reads and consumes them.
 // MAX_PARAMS caps how many parameters a single function may declare.
@@ -163,6 +186,11 @@ void build_gep(char *ptr_reg, const char *arr_name, char **indices) {
     fprintf(ir_file, "\n");
 }
 
+/* ── [FUNC 5/14] Function symbol table ─────────────────────────────────────
+   func_entry / func_table: linked list of every declared function and its
+   parameter count.  register_function() appends one entry per func_def.
+   Used at call sites to look up the callee and emit the correct LLVM call IR.
+   ────────────────────────────────────────────────────────────────────────── */
 // symbol table for functions — tracks declared function names and their parameter counts
 // so that call sites can be validated and the correct LLVM call IR can be emitted
 typedef struct func_entry {
@@ -172,6 +200,10 @@ typedef struct func_entry {
 } func_entry;
 func_entry *func_table = NULL;
 
+/* ── [FUNC 6/14] register_function ─────────────────────────────────────────
+   Called once at the end of the func_def mid-rule action (after param setup).
+   Prepends a new func_entry to func_table so call sites can look it up.
+   ────────────────────────────────────────────────────────────────────────── */
 // prepend a new function entry to func_table; called once per function definition
 void register_function(const char *name, int n_params) {
     func_entry *e = malloc(sizeof(func_entry));
@@ -317,6 +349,13 @@ stmts:
     | /* empty */
     ;
 
+/* ── [FUNC 7/14] param_list_opt / param_list ────────────────────────────────
+   Grammar rules that fill pending_params[] before func_def's mid-rule fires.
+   param_list_opt: handles zero params (resets count) or delegates to param_list.
+   param_list:     first INT_TYPE IDENT resets + pushes; each subsequent one appends.
+   Why reset inside param_list too: if non-empty, param_list_opt's empty branch
+   never fires, so the count from the previous function would carry over.
+   ────────────────────────────────────────────────────────────────────────── */
 // These rules collect the declared parameter names into pending_params[] as the parser
 // reads the function signature, e.g. int add(int a, int b).
 // param_list_opt wraps param_list so that zero-parameter functions still reset the count.
@@ -341,6 +380,18 @@ param_list:
       }
     ;
 
+/* ── [FUNC 8/14] func_def rule ──────────────────────────────────────────────
+   The single rule that compiles any function definition.
+   Mid-rule action (fires BEFORE '{' stmts '}'):
+     A) Build LLVM signature string from pending_params[]
+     B) Write "define i32 @name(...) { entry:" directly to fn_file
+     C) Save+clear sym/arr tables for scope isolation; redirect ir_file → fn_file
+     D) Alloca+store each param into a writable stack slot; register in sym_table
+     E) register_function() records the function for call-site use
+   Closing action (fires AFTER '{' stmts '}'):
+     - Emit fallthrough "ret i32 0\n}" (dead if explicit return already exists)
+     - Restore ir_file → main_buf and sym/arr tables to @main's versions
+   ────────────────────────────────────────────────────────────────────────── */
 func_def:
     INT_TYPE IDENT '(' param_list_opt ')'
     {
@@ -446,6 +497,12 @@ idx_list:
     }
     ;
 
+/* ── [FUNC 9/14] arg_list rule ──────────────────────────────────────────────
+   Builds the LLVM argument string for call instructions, e.g. "i32 %t0, i32 %t1".
+   Left-recursive: first expr creates initial string; each ',' appends to it.
+   The accumulated string is passed up via $$ and spliced into stmt/expr call rules.
+   Nested calls (f(g(x), y)) work because inner calls fully reduce before arg_list builds.
+   ────────────────────────────────────────────────────────────────────────── */
 // arg_list builds the LLVM argument string that gets spliced directly into a call instruction.
 // Goal: turn the arguments of e.g. add(3, 4) into the string "i32 %t0, i32 %t1" so the final
 // emitted IR is:  call i32 @add(i32 %t0, i32 %t1)
@@ -490,12 +547,25 @@ stmt:
         $$ = $4;
         free($2);
     }
+    /* ── [FUNC 10/14] return statement ───────────────────────────────────────
+       Emits "ret i32 %tN" then immediately opens a dead label.
+       The dead label absorbs the unconditional "ret i32 0" that func_def's
+       closing action always emits — without it two terminators would share a
+       block, which LLVM rejects.
+       ────────────────────────────────────────────────────────────────────── */
     | RETURN expr ';' {
         fprintf(ir_file, "  ret i32 %s\n", $2); //ret is LLVM way of ending a function aka terminator
         char *dead = new_label(); //dead label is used to solve the problem of function return
         fprintf(ir_file, "%s:\n", dead);  // dead block keeps IR well-formed after ret
         $$ = NULL;
     }
+    /* ── [FUNC 11/14] Statement calls (no-arg and with-arg) ──────────────────
+       Called for side effects only — return value is discarded ($$ = NULL).
+       Both variants still emit "call i32" (not "call void") because the callee
+       is declared as "define i32"; a type mismatch would make lli reject the IR.
+       No-arg:   IDENT '(' ')' ';'
+       With-arg: IDENT '(' arg_list ')' ';'  — arg_list builds the argument string
+       ────────────────────────────────────────────────────────────────────── */
     // Statement call with no arguments e.g. reset();
     // The return value is intentionally discarded — we call the function for its side effects only.
     // $$ = NULL because there is no value to pass up the parse tree.
@@ -833,6 +903,13 @@ expr:
         free($2.regs);
         $$ = val;
     }
+    /* ── [FUNC 12/14] Expression calls (no-arg and with-arg) ────────────────
+       Called as part of an expression — return value is KEPT.
+       new_tmp() allocates a fresh %tN register; $$ carries it up so parent rules
+       (e.g. assignment, arithmetic) can use the returned value.
+       No-arg:   IDENT '(' ')'
+       With-arg: IDENT '(' arg_list ')'  — arg_list string freed after splicing
+       ────────────────────────────────────────────────────────────────────── */
     // Expression call with no arguments e.g. x = getVal();
     // Unlike statement calls, the return value is KEPT. new_tmp() allocates a fresh %tN register,
     // and the call result is assigned to it. $$ is set to that register so the parent rule
@@ -871,13 +948,27 @@ int main(int argc, char **argv) {
     fprintf(ir_file, "target triple = \"x86_64-unknown-linux-gnu\"\n");
     declare_printf();
 
+    /* ── [FUNC 13/14] Buffer setup ───────────────────────────────────────────
+       Create two scratch-pad tmpfiles before parsing starts.
+       ir_file defaults to main_buf so all top-level statements go there.
+       func_def will temporarily redirect ir_file to fn_file for each function body.
+       ────────────────────────────────────────────────────────────────────── */
     // set up separate buffers: fn_file for user functions, main_buf for @main body
-    fn_file  = tmpfile(); 
+    fn_file  = tmpfile();
     main_buf = tmpfile();
     ir_file  = main_buf;  // all main-body IR goes here by default during parsing
 
     yyparse();  // entire compilation happens here; func_def redirects ir_file to fn_file as needed
 
+    /* ── [FUNC 14/14] Final assembly ─────────────────────────────────────────
+       Pour the scratch pads into output.ll in the correct LLVM module order:
+         1. fn_file  → user-defined functions (must precede @main)
+         2. @main header literal
+         3. main_buf → @main body
+         4. ret i32 0 + closing brace
+       This is the payoff of the two-buffer architecture: parse order is
+       decoupled from the output order required by LLVM.
+       ────────────────────────────────────────────────────────────────────── */
     // flush in correct order: user functions must appear before @main in LLVM IR
     dump_buffer_to(fn_file, actual_output); // pour functions into output.ll
     fprintf(actual_output, "\ndefine i32 @main() {\n");
